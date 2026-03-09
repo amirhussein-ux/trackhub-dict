@@ -3,8 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import dictLogo from "@/assets/DICT_logo.png";
+import nippsLogo from "@/assets/NIPPSB.png";
+import bagongPilipinas from "@/assets/bagong_pilipinas.png";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -21,7 +24,6 @@ export default function LoginPage() {
       return;
     }
     setLoading(true);
-    // Simulate login
     await new Promise((r) => setTimeout(r, 1200));
     setLoading(false);
     toast({ title: "Welcome back!", description: "You have been logged in successfully." });
@@ -32,8 +34,10 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 rounded-2xl hero-gradient items-center justify-center mb-4 shadow-lg">
-            <FileText className="h-7 w-7 text-primary-foreground" />
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <img src={dictLogo} alt="DICT Logo" className="h-14 w-auto" />
+            <img src={nippsLogo} alt="NIPPSB Logo" className="h-14 w-14" />
+            <img src={bagongPilipinas} alt="Bagong Pilipinas" className="h-14 w-auto" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">TrackHub</h1>
           <p className="text-sm text-muted-foreground mt-1">DICT Policy Tracker – Sign In</p>
@@ -80,6 +84,10 @@ export default function LoginPage() {
             Access restricted to authorized DICT personnel only.
           </p>
         </div>
+
+        <p className="text-xs text-muted-foreground text-center mt-6">
+          Department of Information and Communications Technology
+        </p>
       </div>
     </div>
   );

@@ -22,6 +22,7 @@ import {
   SidebarHeader,
   useSidebar,
 } from "@/components/ui/sidebar";
+import dictLogo from "@/assets/DICT_logo.png";
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -47,9 +48,7 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2.5">
-          <div className="h-9 w-9 rounded-lg hero-gradient flex items-center justify-center flex-shrink-0">
-            <FileText className="h-4.5 w-4.5 text-primary-foreground" />
-          </div>
+          <img src={dictLogo} alt="DICT" className="h-9 w-9 flex-shrink-0 brightness-0 invert opacity-90 rounded" />
           {!collapsed && (
             <div className="overflow-hidden">
               <p className="font-bold text-sm text-sidebar-foreground leading-tight">TrackHub</p>
