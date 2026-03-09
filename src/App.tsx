@@ -10,6 +10,8 @@ import DashboardPage from "./pages/DashboardPage";
 import PolicyTrackerPage from "./pages/PolicyTrackerPage";
 import PolicyDetailPage from "./pages/PolicyDetailPage";
 import ActivityLogPage from "./pages/ActivityLogPage";
+import PolicyTimelinePage from "./pages/PolicyTimelinePage";
+import DocumentRepositoryPage from "./pages/DocumentRepositoryPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 
