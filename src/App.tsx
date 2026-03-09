@@ -30,8 +30,8 @@ const App = () => (
             <Route index element={<DashboardPage />} />
             <Route path="policies" element={<PolicyTrackerPage />} />
             <Route path="policies/:id" element={<PolicyDetailPage />} />
-            <Route path="timeline" element={<PlaceholderPage title="Policy Timeline" description="Visualize policy progress across time." />} />
-            <Route path="documents" element={<PlaceholderPage title="Document Repository" description="Upload and manage policy documents." />} />
+            <Route path="timeline" element={<PolicyTimelinePage />} />
+            <Route path="documents" element={<DocumentRepositoryPage />} />
             <Route path="activity" element={<ActivityLogPage />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" description="Generate and export policy reports." />} />
             <Route path="users" element={<PlaceholderPage title="User Management" description="Manage user accounts and roles." />} />
