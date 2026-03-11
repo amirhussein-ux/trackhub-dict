@@ -1,46 +1,71 @@
-import { FileText, FilePlus, Clock, CheckCircle, Zap, TrendingUp, TrendingDown } from "lucide-react";
+import { FileText, Search, Clock, PauseCircle, CheckCircle2, TrendingUp, TrendingDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { mockPolicies, mockActivities, getStatusBadgeVariant } from "@/lib/mock-data";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
+const totalPolicies = mockPolicies.length;
+const underReview = mockPolicies.filter((p) => p.status === "Under Review").length;
+const onProgress = mockPolicies.filter((p) => p.status === "On Progress").length;
+const onHold = mockPolicies.filter((p) => p.status === "On Hold").length;
+const approved = mockPolicies.filter((p) => p.status === "Approved").length;
+
 const metrics = [
-  { label: "Total Policies", value: 10, icon: FileText, trend: "+12%", up: true, color: "bg-primary/10 text-primary" },
-  { label: "Draft", value: 2, icon: FilePlus, trend: "+2", up: true, color: "bg-muted text-muted-foreground" },
-  { label: "Awaiting Publication", value: 3, icon: Clock, trend: "-1", up: false, color: "status-pending" },
-  { label: "Published", value: 2, icon: CheckCircle, trend: "+1", up: true, color: "status-published" },
-  { label: "Effective", value: 3, icon: Zap, trend: "+2", up: true, color: "status-effective" },
+  { label: "Total Policies", value: totalPolicies, icon: FileText, trend: "+12%", up: true, color: "bg-primary/10 text-primary" },
+  { label: "Under Review", value: underReview, icon: Search, trend: "+1", up: true, color: "bg-amber-100 text-amber-700" },
+  { label: "On Progress", value: onProgress, icon: Clock, trend: "-1", up: false, color: "bg-orange-100 text-orange-700" },
+  { label: "On Hold", value: onHold, icon: PauseCircle, trend: "0", up: false, color: "bg-red-100 text-red-600" },
+  { label: "Approved", value: approved, icon: CheckCircle2, trend: "+2", up: true, color: "bg-green-100 text-green-700" },
 ];
 
 const statusData = [
-  { name: "Draft", value: 2, color: "#9CA3AF" },
-  { name: "Filing", value: 2, color: "#EAB308" },
-  { name: "Pending", value: 2, color: "#F97316" },
-  { name: "Published", value: 1, color: "#22C55E" },
-  { name: "Effective", value: 3, color: "#2563EB" },
+  { name: "Approved", value: approved, color: "hsl(142, 71%, 45%)" },
+  { name: "Under Review", value: underReview, color: "hsl(45, 93%, 47%)" },
+  { name: "On Progress", value: onProgress, color: "hsl(25, 95%, 53%)" },
+  { name: "On Hold", value: onHold, color: "hsl(0, 84%, 60%)" },
 ];
 
 const divisionData = [
-  { name: "NIPPSB", count: 3 },
-  { name: "ICT Industry", count: 3 },
-  { name: "ICT Governance", count: 2 },
-  { name: "Cybersecurity", count: 2 },
+  { name: "PPMRAD", count: mockPolicies.filter((p) => p.division === "PPMRAD").length },
+  { name: "PPDD", count: mockPolicies.filter((p) => p.division === "PPDD").length },
+  { name: "PPMED", count: mockPolicies.filter((p) => p.division === "PPMED").length },
+  { name: "PPMCAD", count: mockPolicies.filter((p) => p.division === "PPMCAD").length },
 ];
 
 const yearData = [
   { year: "2022", count: 5 },
   { year: "2023", count: 8 },
   { year: "2024", count: 12 },
-  { year: "2025", count: 10 },
+  { year: "2025", count: totalPolicies },
+];
+
+const progressStatuses = [
+  { label: "Approved", count: approved, color: "bg-green-500", total: totalPolicies },
+  { label: "Under Review", count: underReview, color: "bg-amber-500", total: totalPolicies },
+  { label: "On Progress", count: onProgress, color: "bg-orange-500", total: totalPolicies },
+  { label: "On Hold", count: onHold, color: "bg-red-500", total: totalPolicies },
 ];
 
 export default function DashboardPage() {
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Overview of ICT policy tracking activity.</p>
-      </div>
+      {/* Welcome Banner */}
+      <Card className="hero-gradient text-primary-foreground shadow-lg border-0">
+        <CardContent className="p-6">
+          <h1 className="text-xl font-bold">{getGreeting()}, OIC Director Sanchez</h1>
+          <p className="text-sm text-primary-foreground/80 mt-1">
+            Welcome back to TrackHub — your centralized ICT policy monitoring dashboard.
+          </p>
+        </CardContent>
+      </Card>
 
       {/* Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -51,7 +76,7 @@ export default function DashboardPage() {
                 <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${m.color}`}>
                   <m.icon className="h-4 w-4" />
                 </div>
-                <span className={`text-xs font-medium flex items-center gap-0.5 ${m.up ? 'text-green-600' : 'text-orange-500'}`}>
+                <span className={`text-xs font-medium flex items-center gap-0.5 ${m.up ? "text-green-600" : "text-muted-foreground"}`}>
                   {m.up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                   {m.trend}
                 </span>
@@ -62,6 +87,26 @@ export default function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      {/* Progress Tracker */}
+      <Card className="shadow-card border-border/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold">Policy Progress Tracker</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {progressStatuses.map((s) => (
+              <div key={s.label} className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-muted-foreground">{s.label}</span>
+                  <span className="font-semibold text-foreground">{s.count}/{s.total}</span>
+                </div>
+                <Progress value={(s.count / s.total) * 100} className={`h-2 [&>div]:${s.color}`} />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
