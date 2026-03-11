@@ -32,10 +32,13 @@ const App = () => (
             <Route path="policies/:id" element={<PolicyDetailPage />} />
             <Route path="timeline" element={<PolicyTimelinePage />} />
             <Route path="documents" element={<DocumentRepositoryPage />} />
+            <Route path="archive" element={<PlaceholderPage title="Archive" description="View and manage archived policies and documents." />} />
             <Route path="activity" element={<ActivityLogPage />} />
             <Route path="reports" element={<PlaceholderPage title="Reports" description="Generate and export policy reports." />} />
             <Route path="users" element={<PlaceholderPage title="User Management" description="Manage user accounts and roles." />} />
             <Route path="settings" element={<PlaceholderPage title="Settings" description="Configure system preferences." />} />
+            <Route path="profile" element={<PlaceholderPage title="Profile" description="View and edit your profile information." />} />
+            <Route path="support" element={<PlaceholderPage title="Contact & Support" description="Get help and submit feedback." />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
