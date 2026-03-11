@@ -6,11 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { Search, Plus, ChevronLeft, ChevronRight, Eye, MoreVertical, Info, Pencil, Share2, Archive } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { mockPolicies, getStatusBadgeVariant, divisions, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
 
-const STATUSES: PolicyStatus[] = ["Draft", "For ONAR Filing", "Submitted to ONAR", "For Official Gazette Publication", "For Newspaper Publication", "Published", "Effective"];
-const TYPES: PolicyType[] = ["Department Circular", "Executive Order", "IRR", "JMC"];
+const STATUSES: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold"];
+const TYPES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 const PAGE_SIZE = 8;
 
 export default function PolicyTrackerPage() {
@@ -69,7 +70,7 @@ export default function PolicyTrackerPage() {
               </SelectContent>
             </Select>
             <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[150px] h-9"><SelectValue placeholder="Type" /></SelectTrigger>
+              <SelectTrigger className="w-[180px] h-9"><SelectValue placeholder="Type" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
                 {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
@@ -85,13 +86,13 @@ export default function PolicyTrackerPage() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/30">
-                <TableHead className="font-semibold">Policy Number</TableHead>
-                <TableHead className="font-semibold">Title</TableHead>
+                <TableHead className="font-semibold">Policy ID No.</TableHead>
+                <TableHead className="font-semibold">Policy Title</TableHead>
                 <TableHead className="font-semibold">Division</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
                 <TableHead className="font-semibold">Date Signed</TableHead>
                 <TableHead className="font-semibold">Effectivity</TableHead>
-                <TableHead className="font-semibold w-[80px]">Actions</TableHead>
+                <TableHead className="font-semibold w-[60px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -112,9 +113,27 @@ export default function PolicyTrackerPage() {
                   <TableCell className="text-sm">{p.dateSigned || "—"}</TableCell>
                   <TableCell className="text-sm">{p.effectivityDate || "—"}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/policies/${p.id}`); }}>
-                      <Eye className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); navigate(`/dashboard/policies/${p.id}`); }}>
+                          <Info className="h-4 w-4 mr-2" /> Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                          <Pencil className="h-4 w-4 mr-2" /> Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => e.stopPropagation()}>
+                          <Share2 className="h-4 w-4 mr-2" /> Share
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => e.stopPropagation()} className="text-destructive focus:text-destructive">
+                          <Archive className="h-4 w-4 mr-2" /> Archive
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}

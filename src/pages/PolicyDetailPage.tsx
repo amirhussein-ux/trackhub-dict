@@ -4,18 +4,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, FileText, Upload, Download, CheckCircle, Circle, Clock } from "lucide-react";
-import { mockPolicies, mockActivities, getStatusBadgeVariant } from "@/lib/mock-data";
+import { mockPolicies, mockActivities, getStatusBadgeVariant, type PolicyStatus } from "@/lib/mock-data";
 
-const timelineSteps = [
-  { label: "Draft", key: "Draft" },
-  { label: "ONAR Filing", key: "For ONAR Filing" },
-  { label: "Official Gazette", key: "For Official Gazette Publication" },
-  { label: "Newspaper Publication", key: "For Newspaper Publication" },
-  { label: "Published", key: "Published" },
-  { label: "Effective", key: "Effective" },
+const timelineSteps: { label: string; key: PolicyStatus }[] = [
+  { label: "Approved", key: "Approved" },
+  { label: "Under Review", key: "Under Review" },
+  { label: "On Progress", key: "On Progress" },
+  { label: "On Hold", key: "On Hold" },
 ];
 
-const statusOrder = ["Draft", "For ONAR Filing", "Submitted to ONAR", "For Official Gazette Publication", "For Newspaper Publication", "Published", "Effective"];
+const statusOrder: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold"];
 
 export default function PolicyDetailPage() {
   const { id } = useParams();
@@ -38,11 +36,12 @@ export default function PolicyDetailPage() {
     ["Type", policy.type],
     ["Division", policy.division],
     ["Date Signed", policy.dateSigned || "—"],
-    ["ONAR Filing Date", policy.onarFilingDate || "—"],
-    ["Official Gazette Date", policy.officialGazetteDate || "—"],
-    ["Newspaper Date", policy.newspaperDate || "—"],
+    ["Publication Source", policy.publicationSource || "—"],
+    ["Publication Date", policy.publicationDate || "—"],
     ["Effectivity Clause", policy.effectivityClause || "—"],
     ["Effectivity Date", policy.effectivityDate || "—"],
+    ["Uploaded By", policy.uploadedBy || "—"],
+    ["Last Edited By", policy.lastEditedBy || "—"],
     ["Created By", policy.createdBy],
     ["Created Date", policy.createdDate],
     ["Last Updated", policy.lastUpdated],
@@ -101,23 +100,23 @@ export default function PolicyDetailPage() {
                 {timelineSteps.map((step, i) => {
                   const stepIdx = statusOrder.indexOf(step.key);
                   const completed = stepIdx <= currentIdx;
-                  const isCurrent = step.key === policy.status || (policy.status === "Submitted to ONAR" && step.key === "For ONAR Filing");
+                  const isCurrent = step.key === policy.status;
                   return (
                     <div key={i} className="flex items-start gap-4">
                       <div className="flex flex-col items-center">
                         {completed ? (
                           <CheckCircle className="h-6 w-6 text-primary flex-shrink-0" />
                         ) : isCurrent ? (
-                          <Clock className="h-6 w-6 text-status-pending flex-shrink-0" />
+                          <Clock className="h-6 w-6 text-amber-500 flex-shrink-0" />
                         ) : (
                           <Circle className="h-6 w-6 text-muted flex-shrink-0" />
                         )}
                         {i < timelineSteps.length - 1 && (
-                          <div className={`w-0.5 h-10 ${completed ? 'bg-primary' : 'bg-muted'}`} />
+                          <div className={`w-0.5 h-10 ${completed ? "bg-primary" : "bg-muted"}`} />
                         )}
                       </div>
                       <div className="pb-8">
-                        <p className={`text-sm font-medium ${completed ? 'text-foreground' : 'text-muted-foreground'}`}>{step.label}</p>
+                        <p className={`text-sm font-medium ${completed ? "text-foreground" : "text-muted-foreground"}`}>{step.label}</p>
                         <p className="text-xs text-muted-foreground">
                           {completed ? "Completed" : "Pending"}
                         </p>

@@ -7,9 +7,11 @@ import {
   BarChart3,
   Users,
   Settings,
+  LogOut,
+  Archive,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -20,8 +22,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarHeader,
+  SidebarFooter,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import dictLogo from "@/assets/DICT_logo.png";
 
 const mainNav = [
@@ -29,6 +34,7 @@ const mainNav = [
   { title: "Policy Tracker", url: "/dashboard/policies", icon: FileText },
   { title: "Policy Timeline", url: "/dashboard/timeline", icon: Clock },
   { title: "Documents", url: "/dashboard/documents", icon: FolderOpen },
+  { title: "Archive", url: "/dashboard/archive", icon: Archive },
   { title: "Activity Logs", url: "/dashboard/activity", icon: Activity },
 ];
 
@@ -42,6 +48,7 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const navigate = useNavigate();
   const isActive = (path: string) => location.pathname === path;
 
   return (
@@ -99,6 +106,18 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <SidebarFooter className="p-3">
+        <Separator className="mb-3 bg-sidebar-border" />
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-9"
+          onClick={() => navigate("/")}
+        >
+          <LogOut className="h-4 w-4 mr-2 flex-shrink-0" />
+          {!collapsed && <span>Log Out</span>}
+        </Button>
+      </SidebarFooter>
     </Sidebar>
   );
 }
