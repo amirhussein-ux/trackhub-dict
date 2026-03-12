@@ -1,10 +1,13 @@
 import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, FileText, Upload, Download, CheckCircle, Circle, Clock } from "lucide-react";
-import { mockPolicies, mockActivities, getStatusBadgeVariant, type PolicyStatus } from "@/lib/mock-data";
+import { ArrowLeft, FileText, Download, CheckCircle, Circle, Clock } from "lucide-react";
+import { getStatusBadgeVariant, type PolicyStatus } from "@/lib/mock-data.ts";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
+import { loadActivitiesFromStorage, loadDocumentsFromStorage, subscribeToDataUpdates } from "@/lib/records-storage";
 
 const timelineSteps: { label: string; key: PolicyStatus }[] = [
   { label: "Approved", key: "Approved" },
@@ -18,7 +21,25 @@ const statusOrder: PolicyStatus[] = ["Approved", "Under Review", "On Progress", 
 export default function PolicyDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const policy = mockPolicies.find((p) => p.id === id);
+  const [policies, setPolicies] = useState(() => loadPoliciesFromStorage());
+  const [activities, setActivities] = useState(() => loadActivitiesFromStorage());
+  const [documents, setDocuments] = useState(() => loadDocumentsFromStorage());
+
+  useEffect(() => {
+    return subscribeToDataUpdates(() => {
+      setPolicies(loadPoliciesFromStorage());
+      setActivities(loadActivitiesFromStorage());
+      setDocuments(loadDocumentsFromStorage());
+    });
+  }, []);
+
+  const policy = policies.find((p) => p.id === id);
+  const policyDocuments = useMemo(() => {
+    if (!policy) return [];
+    return documents
+      .filter((doc) => doc.policyId === policy.id && doc.status !== "Archived")
+      .sort((a, b) => b.version - a.version);
+  }, [documents, policy]);
 
   if (!policy) {
     return (
@@ -107,7 +128,7 @@ export default function PolicyDetailPage() {
                         {completed ? (
                           <CheckCircle className="h-6 w-6 text-primary flex-shrink-0" />
                         ) : isCurrent ? (
-                          <Clock className="h-6 w-6 text-amber-500 flex-shrink-0" />
+                          <Clock className="h-6 w-6 text-destructive flex-shrink-0" />
                         ) : (
                           <Circle className="h-6 w-6 text-muted flex-shrink-0" />
                         )}
@@ -133,21 +154,16 @@ export default function PolicyDetailPage() {
           <Card className="shadow-card border-border/50">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-sm">Documents</CardTitle>
-              <Button variant="outline" size="sm"><Upload className="h-4 w-4 mr-1" /> Upload</Button>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {[
-                  { name: `${policy.policyNumber}_v3.pdf`, size: "1.2 MB", date: "2025-03-05" },
-                  { name: `${policy.policyNumber}_v2.pdf`, size: "1.1 MB", date: "2025-02-20" },
-                  { name: `${policy.policyNumber}_v1.docx`, size: "890 KB", date: "2025-01-15" },
-                ].map((doc, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                {policyDocuments.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
                     <div className="flex items-center gap-3">
                       <FileText className="h-5 w-5 text-primary" />
                       <div>
                         <p className="text-sm font-medium text-foreground">{doc.name}</p>
-                        <p className="text-xs text-muted-foreground">{doc.size} · {doc.date}</p>
+                        <p className="text-xs text-muted-foreground">{doc.size} · {doc.uploadedDate} · v{doc.version}</p>
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -155,6 +171,7 @@ export default function PolicyDetailPage() {
                     </Button>
                   </div>
                 ))}
+                {policyDocuments.length === 0 && <p className="text-sm text-muted-foreground py-2">No active documents for this policy.</p>}
               </div>
             </CardContent>
           </Card>
@@ -165,9 +182,9 @@ export default function PolicyDetailPage() {
             <CardHeader><CardTitle className="text-sm">Activity Log</CardTitle></CardHeader>
             <CardContent>
               <div className="space-y-3">
-                {mockActivities.filter(a => a.policyTitle === policy.title).length === 0 ? (
+                {activities.filter((a) => a.policyTitle === policy.title).length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">No activity recorded yet.</p>
-                ) : mockActivities.filter(a => a.policyTitle === policy.title).map((a) => (
+                ) : activities.filter((a) => a.policyTitle === policy.title).map((a) => (
                   <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/30 transition-colors">
                     <div className="h-8 w-8 rounded-full hero-gradient flex items-center justify-center flex-shrink-0 text-primary-foreground text-xs font-bold">
                       {a.user.split(" ").map(n => n[0]).join("")}

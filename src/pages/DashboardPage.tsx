@@ -1,8 +1,10 @@
 import { FileText, Search, Clock, PauseCircle, CheckCircle2, TrendingUp, TrendingDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { mockPolicies, mockActivities, getStatusBadgeVariant } from "@/lib/mock-data";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
+import { loadActivitiesFromStorage, subscribeToDataUpdates } from "@/lib/records-storage";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 
 function getGreeting() {
@@ -12,49 +14,67 @@ function getGreeting() {
   return "Good evening";
 }
 
-const totalPolicies = mockPolicies.length;
-const underReview = mockPolicies.filter((p) => p.status === "Under Review").length;
-const onProgress = mockPolicies.filter((p) => p.status === "On Progress").length;
-const onHold = mockPolicies.filter((p) => p.status === "On Hold").length;
-const approved = mockPolicies.filter((p) => p.status === "Approved").length;
-
-const metrics = [
-  { label: "Total Policies", value: totalPolicies, icon: FileText, trend: "+12%", up: true, color: "bg-primary/10 text-primary" },
-  { label: "Under Review", value: underReview, icon: Search, trend: "+1", up: true, color: "bg-amber-100 text-amber-700" },
-  { label: "On Progress", value: onProgress, icon: Clock, trend: "-1", up: false, color: "bg-orange-100 text-orange-700" },
-  { label: "On Hold", value: onHold, icon: PauseCircle, trend: "0", up: false, color: "bg-red-100 text-red-600" },
-  { label: "Approved", value: approved, icon: CheckCircle2, trend: "+2", up: true, color: "bg-green-100 text-green-700" },
-];
-
-const statusData = [
-  { name: "Approved", value: approved, color: "hsl(142, 71%, 45%)" },
-  { name: "Under Review", value: underReview, color: "hsl(45, 93%, 47%)" },
-  { name: "On Progress", value: onProgress, color: "hsl(25, 95%, 53%)" },
-  { name: "On Hold", value: onHold, color: "hsl(0, 84%, 60%)" },
-];
-
-const divisionData = [
-  { name: "PPMRAD", count: mockPolicies.filter((p) => p.division === "PPMRAD").length },
-  { name: "PPDD", count: mockPolicies.filter((p) => p.division === "PPDD").length },
-  { name: "PPMED", count: mockPolicies.filter((p) => p.division === "PPMED").length },
-  { name: "PPMCAD", count: mockPolicies.filter((p) => p.division === "PPMCAD").length },
-];
-
-const yearData = [
-  { year: "2022", count: 5 },
-  { year: "2023", count: 8 },
-  { year: "2024", count: 12 },
-  { year: "2025", count: totalPolicies },
-];
-
-const progressStatuses = [
-  { label: "Approved", count: approved, color: "bg-green-500", total: totalPolicies },
-  { label: "Under Review", count: underReview, color: "bg-amber-500", total: totalPolicies },
-  { label: "On Progress", count: onProgress, color: "bg-orange-500", total: totalPolicies },
-  { label: "On Hold", count: onHold, color: "bg-red-500", total: totalPolicies },
-];
-
 export default function DashboardPage() {
+  const navigate = useNavigate();
+  const [policies, setPolicies] = useState(() => loadPoliciesFromStorage());
+  const [activities, setActivities] = useState(() => loadActivitiesFromStorage());
+
+  useEffect(() => {
+    return subscribeToDataUpdates(() => {
+      setPolicies(loadPoliciesFromStorage());
+      setActivities(loadActivitiesFromStorage());
+    });
+  }, []);
+
+  const totalPolicies = policies.length;
+  const underReview = policies.filter((p) => p.status === "Under Review").length;
+  const onProgress = policies.filter((p) => p.status === "On Progress").length;
+  const onHold = policies.filter((p) => p.status === "On Hold").length;
+  const approved = policies.filter((p) => p.status === "Approved").length;
+
+  const metrics = [
+    { label: "Total Policies", value: totalPolicies, icon: FileText, trend: "", up: true, color: "bg-primary/10 text-primary" },
+    { label: "Under Review", value: underReview, icon: Search, trend: "", up: true, color: "bg-destructive/20 text-foreground" },
+    { label: "On Progress", value: onProgress, icon: Clock, trend: "", up: false, color: "bg-secondary/15 text-secondary" },
+    { label: "On Hold", value: onHold, icon: PauseCircle, trend: "", up: false, color: "bg-primary/12 text-primary" },
+    { label: "Approved", value: approved, icon: CheckCircle2, trend: "", up: true, color: "bg-accent/15 text-accent" },
+  ];
+
+  const statusData = [
+    { name: "Approved", value: approved, color: "#4CAF50" },
+    { name: "Under Review", value: underReview, color: "#FFB400" },
+    { name: "On Progress", value: onProgress, color: "#2E5C8A" },
+    { name: "On Hold", value: onHold, color: "#1A3A5F" },
+  ];
+
+  const divisionData = [
+    { name: "PRAD", count: policies.filter((p) => p.division === "PRAD").length },
+    { name: "PPDD", count: policies.filter((p) => p.division === "PPDD").length },
+    { name: "PPMED", count: policies.filter((p) => p.division === "PPMED").length },
+    { name: "PPMCAD", count: policies.filter((p) => p.division === "PPMCAD").length },
+  ];
+
+  const yearData = useMemo(() => {
+    const counts = new Map<number, number>();
+    policies.forEach((policy) => {
+      const year = new Date(policy.createdDate).getFullYear();
+      if (!Number.isNaN(year)) {
+        counts.set(year, (counts.get(year) ?? 0) + 1);
+      }
+    });
+
+    return Array.from(counts.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([year, count]) => ({ year: String(year), count }));
+  }, [policies]);
+
+  const progressStatuses = [
+    { label: "Approved", count: approved, color: "bg-accent", total: totalPolicies },
+    { label: "Under Review", count: underReview, color: "bg-destructive", total: totalPolicies },
+    { label: "On Progress", count: onProgress, color: "bg-secondary", total: totalPolicies },
+    { label: "On Hold", count: onHold, color: "bg-primary", total: totalPolicies },
+  ];
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Welcome Banner */}
@@ -76,10 +96,14 @@ export default function DashboardPage() {
                 <div className={`h-9 w-9 rounded-lg flex items-center justify-center ${m.color}`}>
                   <m.icon className="h-4 w-4" />
                 </div>
-                <span className={`text-xs font-medium flex items-center gap-0.5 ${m.up ? "text-green-600" : "text-muted-foreground"}`}>
-                  {m.up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                  {m.trend}
-                </span>
+                {m.trend ? (
+                  <span className={`text-xs font-medium flex items-center gap-0.5 ${m.up ? "text-accent" : "text-muted-foreground"}`}>
+                    {m.up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                    {m.trend}
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Live</span>
+                )}
               </div>
               <p className="text-2xl font-bold text-foreground">{m.value}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{m.label}</p>
@@ -101,7 +125,7 @@ export default function DashboardPage() {
                   <span className="text-muted-foreground">{s.label}</span>
                   <span className="font-semibold text-foreground">{s.count}/{s.total}</span>
                 </div>
-                <Progress value={(s.count / s.total) * 100} className={`h-2 [&>div]:${s.color}`} />
+                <Progress value={s.total > 0 ? (s.count / s.total) * 100 : 0} className={`h-2 [&>div]:${s.color}`} />
               </div>
             ))}
           </div>
@@ -110,7 +134,15 @@ export default function DashboardPage() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="shadow-card border-border/50">
+        <Card
+          className="shadow-card border-border/50 cursor-pointer hover:shadow-card-hover transition-all"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/dashboard/reports")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") navigate("/dashboard/reports");
+          }}
+        >
           <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Status Distribution</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={200}>
@@ -132,7 +164,15 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card border-border/50">
+        <Card
+          className="shadow-card border-border/50 cursor-pointer hover:shadow-card-hover transition-all"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/dashboard/reports")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") navigate("/dashboard/reports");
+          }}
+        >
           <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Policies per Division</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
@@ -146,11 +186,19 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="shadow-card border-border/50">
+        <Card
+          className="shadow-card border-border/50 cursor-pointer hover:shadow-card-hover transition-all"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate("/dashboard/reports")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") navigate("/dashboard/reports");
+          }}
+        >
           <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Policies per Year</CardTitle></CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={yearData}>
+              <LineChart data={yearData.length > 0 ? yearData : [{ year: "-", count: 0 }] }>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 32%, 91%)" />
                 <XAxis dataKey="year" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
                 <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
@@ -169,7 +217,7 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {mockActivities.slice(0, 6).map((a) => (
+            {activities.slice(0, 6).map((a) => (
               <div key={a.id} className="flex items-start gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors">
                 <div className="h-8 w-8 rounded-full hero-gradient flex items-center justify-center flex-shrink-0 text-primary-foreground text-xs font-bold">
                   {a.user.split(" ").map((n) => n[0]).join("")}
@@ -184,6 +232,7 @@ export default function DashboardPage() {
                 <span className="text-xs text-muted-foreground whitespace-nowrap">{a.timestamp.split(" ")[1]}</span>
               </div>
             ))}
+            {activities.length === 0 && <p className="text-sm text-muted-foreground">No recent activity yet.</p>}
           </div>
         </CardContent>
       </Card>

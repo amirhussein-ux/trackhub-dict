@@ -6,80 +6,80 @@
 
 @layer base {
   :root {
-    --background: 210 40% 96%;
-    --foreground: 220 25% 10%;
+    --background: 220 20% 97%;
+    --foreground: 0 0% 17%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 25% 10%;
+    --card-foreground: 0 0% 17%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 25% 10%;
+    --popover-foreground: 0 0% 17%;
 
-    --primary: 217 91% 53%;
+    --primary: 212 57% 24%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 224 76% 40%;
+    --secondary: 210 50% 36%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 214 32% 91%;
-    --muted-foreground: 218 11% 45%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 0 0% 42%;
 
-    --accent: 210 40% 96%;
-    --accent-foreground: 220 25% 10%;
+    --accent: 122 39% 49%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 42 100% 50%;
+    --destructive-foreground: 0 0% 17%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 53%;
+    --border: 220 13% 87%;
+    --input: 220 13% 87%;
+    --ring: 210 50% 36%;
 
     --radius: 0.75rem;
 
-    --sidebar-background: 220 26% 14%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 20% 20%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 220 20% 22%;
-    --sidebar-ring: 217 91% 53%;
-    --sidebar-muted: 220 15% 30%;
+    --sidebar-background: 212 57% 24%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 42 100% 50%;
+    --sidebar-primary-foreground: 0 0% 17%;
+    --sidebar-accent: 210 50% 36%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 212 40% 30%;
+    --sidebar-ring: 42 100% 50%;
+    --sidebar-muted: 210 22% 62%;
 
     /* Status colors */
-    --status-draft: 218 11% 65%;
-    --status-filing: 45 93% 47%;
-    --status-pending: 25 95% 53%;
-    --status-published: 142 71% 45%;
-    --status-effective: 217 91% 53%;
+    --status-draft: 0 0% 42%;
+    --status-filing: 42 100% 50%;
+    --status-pending: 210 50% 36%;
+    --status-published: 122 39% 49%;
+    --status-effective: 212 57% 24%;
 
     /* Custom tokens */
-    --card-muted: 220 14% 90%;
-    --hero-gradient: linear-gradient(135deg, hsl(217 91% 53%), hsl(224 76% 40%));
+    --card-muted: 220 14% 93%;
+    --hero-gradient: linear-gradient(135deg, hsl(212 57% 24%), hsl(210 50% 36%));
     --shadow-card: 0 1px 3px 0 rgb(0 0 0 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.06);
     --shadow-card-hover: 0 10px 25px -5px rgb(0 0 0 / 0.08), 0 4px 10px -5px rgb(0 0 0 / 0.04);
   }
 
   .dark {
-    --background: 220 26% 10%;
+    --background: 212 35% 10%;
     --foreground: 210 40% 98%;
-    --card: 220 26% 14%;
+    --card: 212 30% 14%;
     --card-foreground: 210 40% 98%;
-    --popover: 220 26% 14%;
+    --popover: 212 30% 14%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
+    --primary: 212 52% 30%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 224 76% 48%;
+    --secondary: 210 44% 44%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 220 20% 20%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 220 20% 20%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 220 20% 22%;
-    --input: 220 20% 22%;
-    --ring: 217 91% 60%;
+    --muted: 212 18% 20%;
+    --muted-foreground: 0 0% 72%;
+    --accent: 122 36% 44%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 42 100% 50%;
+    --destructive-foreground: 0 0% 17%;
+    --border: 212 18% 24%;
+    --input: 212 18% 24%;
+    --ring: 210 44% 44%;
   }
 }
 
@@ -114,15 +114,19 @@
   }
 
   .status-approved {
-    @apply bg-green-100 text-green-700;
+    @apply text-white;
+    background-color: #4CAF50;
   }
   .status-under-review {
-    @apply bg-amber-100 text-amber-700;
+    color: #2B2B2B;
+    background-color: #FFB400;
   }
   .status-on-progress {
-    @apply bg-orange-100 text-orange-700;
+    @apply text-white;
+    background-color: #2E5C8A;
   }
   .status-on-hold {
-    @apply bg-red-100 text-red-600;
+    @apply text-white;
+    background-color: #1A3A5F;
   }
 }

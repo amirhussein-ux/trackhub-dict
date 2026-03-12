@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { mockActivities } from "@/lib/mock-data";
+import { useEffect, useState } from "react";
+import { loadActivitiesFromStorage, subscribeToDataUpdates } from "@/lib/records-storage";
 import { FileText, Upload, RefreshCw, Download, Activity as ActivityIcon } from "lucide-react";
 
 const iconMap: Record<string, typeof FileText> = {
@@ -12,6 +13,14 @@ const iconMap: Record<string, typeof FileText> = {
 };
 
 export default function ActivityLogPage() {
+  const [activities, setActivities] = useState(() => loadActivitiesFromStorage());
+
+  useEffect(() => {
+    return subscribeToDataUpdates(() => {
+      setActivities(loadActivitiesFromStorage());
+    });
+  }, []);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
@@ -21,7 +30,7 @@ export default function ActivityLogPage() {
       <Card className="shadow-card border-border/50">
         <CardContent className="p-0">
           <div className="divide-y divide-border">
-            {mockActivities.map((a) => {
+            {activities.map((a) => {
               const Icon = iconMap[a.type] || ActivityIcon;
               return (
                 <div key={a.id} className="flex items-start gap-4 p-4 hover:bg-muted/30 transition-colors">

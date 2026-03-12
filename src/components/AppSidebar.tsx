@@ -27,7 +27,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import dictLogo from "@/assets/DICT_logo.png";
+import { getCurrentUser } from "@/lib/user-session";
+import dictLogo from "@/assets/Artboard 4.png";
 
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
@@ -44,18 +45,35 @@ const adminNav = [
   { title: "Settings", url: "/dashboard/settings", icon: Settings },
 ];
 
+const USER_MANAGEMENT_ALLOWED_EMAILS = new Set(["oicdirector@dict.gov.ph", "divisionchief@dict.gov.ph"]);
+
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
+  const canAccessUserManagement = USER_MANAGEMENT_ALLOWED_EMAILS.has(currentUser.email.toLowerCase());
   const isActive = (path: string) => location.pathname === path;
+  const visibleAdminNav = adminNav.filter((item) => item.title !== "User Management" || canAccessUserManagement);
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-2.5">
-          <img src={dictLogo} alt="DICT" className="h-9 w-9 flex-shrink-0 brightness-0 invert opacity-90 rounded" />
+      <SidebarHeader className={`p-4 ${collapsed ? "flex justify-center" : ""}`}>
+        <div className={`flex items-center ${collapsed ? "justify-center" : "gap-2.5"}`}>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring rounded"
+            aria-label="Go to dashboard"
+            title="Go to dashboard"
+          >
+            <img
+              src={dictLogo}
+              alt="DICT"
+              className={`flex-shrink-0 brightness-0 invert opacity-90 rounded ${collapsed ? "h-4 w-4" : "h-9 w-9"}`}
+            />
+          </button>
           {!collapsed && (
             <div className="overflow-hidden">
               <p className="font-bold text-sm text-sidebar-foreground leading-tight">TrackHub</p>
@@ -92,7 +110,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {adminNav.map((item) => (
+              {visibleAdminNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink to={item.url} end className="hover:bg-sidebar-accent/50" activeClassName="bg-sidebar-accent text-sidebar-primary font-medium">

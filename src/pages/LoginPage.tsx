@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { authenticateUser } from "@/lib/auth-workflows.ts";
+import { setCurrentUser } from "@/lib/user-session";
 import dictLogo from "@/assets/DICT_logo.png";
 import nippsLogo from "@/assets/NIPPSB.png";
 import bagongPilipinas from "@/assets/bagong_pilipinas.png";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -19,13 +21,39 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
+    if (!identifier || !password) {
       toast({ title: "Error", description: "Please fill in all fields.", variant: "destructive" });
       return;
     }
+
+    const authResult = authenticateUser(identifier, password);
+    if (authResult.ok === false) {
+      toast({ title: "Authentication failed", description: authResult.message, variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
     await new Promise((r) => setTimeout(r, 1200));
     setLoading(false);
+
+    if (authResult.firstLogin) {
+      toast({
+        title: "First login detected",
+        description: "Please verify your webmail and set a new password before continuing.",
+      });
+      navigate("/first-login-password-change", {
+        state: { identifier: authResult.user.identifier },
+      });
+      return;
+    }
+
+    setCurrentUser({
+      identifier: authResult.user.identifier,
+      email: authResult.user.email,
+      name: authResult.user.name,
+      role: authResult.user.role,
+    });
+
     toast({ title: "Welcome back!", description: "You have been logged in successfully." });
     navigate("/dashboard");
   };
@@ -46,13 +74,13 @@ export default function LoginPage() {
         <div className="bg-card rounded-2xl border border-border/50 shadow-card p-8">
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-foreground">Email Address</Label>
+              <Label htmlFor="identifier" className="text-foreground">Email or Username</Label>
               <Input
-                id="email"
-                type="email"
-                placeholder="user@dict.gov.ph"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="identifier"
+                type="text"
+                placeholder="user@dict.gov.ph or username"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="h-11"
               />
             </div>
@@ -79,6 +107,14 @@ export default function LoginPage() {
             <Button type="submit" variant="hero" className="w-full h-11" disabled={loading}>
               {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Signing in...</> : "Sign In"}
             </Button>
+            <div className="flex items-center justify-between text-sm">
+              <Link to="/forgot-password" className="text-primary hover:underline">
+                Forgot Password?
+              </Link>
+              <Link to="/first-login-password-change" className="text-muted-foreground hover:text-foreground hover:underline">
+                First Login Setup
+              </Link>
+            </div>
           </form>
           <p className="text-xs text-muted-foreground text-center mt-6">
             Access restricted to authorized DICT personnel only.

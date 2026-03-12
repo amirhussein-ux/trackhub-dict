@@ -3,11 +3,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CheckCircle, Circle, Clock, ArrowRight, Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { mockPolicies, getStatusBadgeVariant, divisions, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
+import { getStatusBadgeVariant, divisions, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
+import { subscribeToDataUpdates } from "@/lib/records-storage";
 
-const statusOrder: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold"];
+const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved"];
 const TYPES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 
 const statusIcons: Record<PolicyStatus, typeof CheckCircle> = {
@@ -23,8 +25,16 @@ export default function PolicyTimelinePage() {
   const [filterType, setFilterType] = useState("all");
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const [policies, setPolicies] = useState(() => loadPoliciesFromStorage());
 
-  const filtered = mockPolicies.filter((p) => {
+  useEffect(() => {
+    return subscribeToDataUpdates(() => {
+      setPolicies(loadPoliciesFromStorage());
+    });
+  }, []);
+
+  const filtered = policies.filter((p) => {
+    if ((p as { archived?: boolean }).archived) return false;
     if (filterDivision !== "all" && p.division !== filterDivision) return false;
     if (filterStatus !== "all" && p.status !== filterStatus) return false;
     if (filterType !== "all" && p.type !== filterType) return false;

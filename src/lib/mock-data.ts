@@ -1,14 +1,14 @@
-// Mock data for the TrackHub application
+// Mock data and shared types for the TrackHub application
 
-export type PolicyStatus = 
-  | "Approved" 
-  | "Under Review" 
-  | "On Progress" 
+export type PolicyStatus =
+  | "Approved"
+  | "Under Review"
+  | "On Progress"
   | "On Hold";
 
 export type PolicyType = "Republic Act" | "Executive Order" | "Issuance" | "Administrative Order" | "Memorandum Order";
 
-export type Division = "PPMRAD" | "PPDD" | "PPMED" | "PPMCAD";
+export type Division = "PRAD" | "PPDD" | "PPMED" | "PPMCAD";
 
 export interface Policy {
   id: string;
@@ -50,178 +50,11 @@ export interface Notification {
   read: boolean;
 }
 
-export const mockPolicies: Policy[] = [
-  {
-    id: "POL-2025-001",
-    policyNumber: "RA-2025-001",
-    title: "National Broadband Plan Implementation Guidelines",
-    type: "Republic Act",
-    division: "PPMRAD",
-    dateSigned: "2025-01-15",
-    effectivityClause: "15 days after publication",
-    effectivityDate: "2025-02-18",
-    publicationSource: "Official Gazette",
-    publicationDate: "2025-02-01",
-    status: "Approved",
-    createdBy: "Juan Dela Cruz",
-    createdDate: "2025-01-10",
-    lastUpdated: "2025-02-18",
-    uploadedBy: "Juan Dela Cruz",
-    lastEditedBy: "Maria Santos",
-    accessEmails: ["PPMRAD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-002",
-    policyNumber: "EO-2025-001",
-    title: "Cybersecurity Standards for Government Agencies",
-    type: "Executive Order",
-    division: "PPDD",
-    dateSigned: "2025-02-10",
-    status: "On Progress",
-    publicationSource: "Newspaper of General Circulation",
-    publicationDate: "2025-03-01",
-    createdBy: "Maria Santos",
-    createdDate: "2025-02-01",
-    lastUpdated: "2025-03-01",
-    uploadedBy: "Maria Santos",
-    lastEditedBy: "Maria Santos",
-    accessEmails: ["PPDD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-003",
-    policyNumber: "EO-2025-002",
-    title: "Digital Transformation Acceleration Program",
-    type: "Executive Order",
-    division: "PPMED",
-    dateSigned: "2025-03-01",
-    status: "Approved",
-    effectivityDate: "2025-03-21",
-    publicationSource: "Official Gazette",
-    publicationDate: "2025-03-05",
-    createdBy: "Pedro Reyes",
-    createdDate: "2025-02-20",
-    lastUpdated: "2025-03-06",
-    uploadedBy: "Pedro Reyes",
-    lastEditedBy: "Pedro Reyes",
-    accessEmails: ["PPMED@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-004",
-    policyNumber: "AO-2025-001",
-    title: "Data Privacy Compliance Framework for ICT",
-    type: "Administrative Order",
-    division: "PPMCAD",
-    dateSigned: "2025-03-05",
-    status: "Under Review",
-    createdBy: "Ana Lim",
-    createdDate: "2025-02-28",
-    lastUpdated: "2025-03-08",
-    uploadedBy: "Ana Lim",
-    lastEditedBy: "Ana Lim",
-    accessEmails: ["PPMCAD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-005",
-    policyNumber: "MO-2025-001",
-    title: "Implementing Rules for E-Government Act",
-    type: "Memorandum Order",
-    division: "PPMED",
-    dateSigned: "2025-01-25",
-    effectivityClause: "Immediately upon publication",
-    effectivityDate: "2025-02-16",
-    publicationSource: "Official Gazette",
-    publicationDate: "2025-02-15",
-    status: "Approved",
-    createdBy: "Juan Dela Cruz",
-    createdDate: "2025-01-20",
-    lastUpdated: "2025-02-16",
-    uploadedBy: "Juan Dela Cruz",
-    lastEditedBy: "Juan Dela Cruz",
-    accessEmails: ["PPMED@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-006",
-    policyNumber: "IS-2025-001",
-    title: "Joint ICT-Education Technology Standards",
-    type: "Issuance",
-    division: "PPMRAD",
-    dateSigned: "2025-02-20",
-    status: "Under Review",
-    createdBy: "Maria Santos",
-    createdDate: "2025-02-15",
-    lastUpdated: "2025-02-20",
-    uploadedBy: "Maria Santos",
-    lastEditedBy: "Maria Santos",
-    accessEmails: ["PPMRAD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-007",
-    policyNumber: "AO-2025-002",
-    title: "Cloud-First Policy for Government Systems",
-    type: "Administrative Order",
-    division: "PPDD",
-    status: "On Hold",
-    dateSigned: "",
-    createdBy: "Pedro Reyes",
-    createdDate: "2025-03-01",
-    lastUpdated: "2025-03-05",
-    uploadedBy: "Pedro Reyes",
-    lastEditedBy: "Pedro Reyes",
-    accessEmails: ["PPDD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-008",
-    policyNumber: "IS-2025-002",
-    title: "Open Data Policy Framework",
-    type: "Issuance",
-    division: "PPMCAD",
-    status: "On Hold",
-    dateSigned: "",
-    createdBy: "Ana Lim",
-    createdDate: "2025-03-04",
-    lastUpdated: "2025-03-07",
-    uploadedBy: "Ana Lim",
-    lastEditedBy: "Ana Lim",
-    accessEmails: ["PPMCAD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-009",
-    policyNumber: "RA-2025-002",
-    title: "National AI Strategy Implementation",
-    type: "Republic Act",
-    division: "PPMRAD",
-    dateSigned: "2025-02-28",
-    status: "On Progress",
-    createdBy: "Juan Dela Cruz",
-    createdDate: "2025-02-25",
-    lastUpdated: "2025-03-02",
-    uploadedBy: "Juan Dela Cruz",
-    lastEditedBy: "Juan Dela Cruz",
-    accessEmails: ["PPMRAD@dict.gov.ph"],
-  },
-  {
-    id: "POL-2025-010",
-    policyNumber: "MO-2025-002",
-    title: "Government Email System Standards",
-    type: "Memorandum Order",
-    division: "PPDD",
-    dateSigned: "2025-01-10",
-    effectivityClause: "30 days after publication",
-    effectivityDate: "2025-03-04",
-    publicationSource: "Official Gazette",
-    publicationDate: "2025-02-01",
-    status: "Approved",
-    createdBy: "Maria Santos",
-    createdDate: "2025-01-05",
-    lastUpdated: "2025-03-04",
-    uploadedBy: "Maria Santos",
-    lastEditedBy: "Maria Santos",
-    accessEmails: ["PPDD@dict.gov.ph"],
-  },
-];
+// Policy records are intentionally empty to avoid seeding mock policy data.
+export const mockPolicies: Policy[] = [];
 
 export const mockActivities: ActivityLog[] = [
-  { id: "1", user: "Juan Dela Cruz", action: "Updated status to Approved", policyTitle: "National Broadband Plan Implementation Guidelines", timestamp: "2025-03-08 14:30", type: "status" },
+  { id: "1", user: "Juan Dela Cruz", action: "Changed status to Approved", policyTitle: "National Broadband Plan Implementation Guidelines", timestamp: "2025-03-08 14:30", type: "status" },
   { id: "2", user: "Maria Santos", action: "Uploaded revised document v3", policyTitle: "Cybersecurity Standards for Government Agencies", timestamp: "2025-03-08 11:15", type: "upload" },
   { id: "3", user: "Pedro Reyes", action: "Created new policy draft", policyTitle: "Cloud-First Policy for Government Systems", timestamp: "2025-03-07 16:45", type: "create" },
   { id: "4", user: "Ana Lim", action: "Updated publication date", policyTitle: "Data Privacy Compliance Framework for ICT", timestamp: "2025-03-07 10:20", type: "update" },
@@ -241,7 +74,7 @@ export const mockNotifications: Notification[] = [
 ];
 
 export const divisions: Division[] = [
-  "PPMRAD",
+  "PRAD",
   "PPDD",
   "PPMED",
   "PPMCAD",

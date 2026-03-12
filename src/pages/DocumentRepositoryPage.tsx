@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
@@ -21,73 +20,346 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FileText, Upload, Download, Search, File, Image, Sheet, Eye, Clock, FolderOpen, MoreVertical, Info, Pencil, Share2, Archive, Grid3X3, List, Trash2 } from "lucide-react";
-import { mockPolicies, divisions, type PolicyType } from "@/lib/mock-data";
+import {
+  FileText,
+  Download,
+  Search,
+  File,
+  Image,
+  Sheet,
+  Eye,
+  Clock,
+  FolderOpen,
+  MoreVertical,
+  Info,
+  Pencil,
+  Share2,
+  Archive,
+  Grid3X3,
+  List,
+} from "lucide-react";
+import { divisions, type Division, type PolicyType } from "@/lib/mock-data";
 import { useToast } from "@/hooks/use-toast";
-
-interface Document {
-  id: string;
-  name: string;
-  policyNumber: string;
-  policyTitle: string;
-  type: "pdf" | "docx" | "xlsx" | "jpg" | "png";
-  size: string;
-  version: number;
-  uploadedBy: string;
-  uploadedDate: string;
-  division: string;
-  category: PolicyType;
-  status: "Active" | "Archived";
-  owner: string;
-  lastEdited: string;
-  remarks?: string;
-}
+import {
+  appendActivity,
+  appendPolicyNotifications,
+  loadDocumentsFromStorage,
+  saveDocumentsToStorage,
+  type RepositoryDocument,
+} from "@/lib/records-storage";
+import { loadPoliciesFromStorage, savePoliciesToStorage } from "@/lib/policy-storage";
+import { getCurrentUser } from "@/lib/user-session";
 
 const CATEGORIES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 
-const mockDocuments: Document[] = [
-  { id: "DOC-001", name: "RA-2025-001_v3.pdf", policyNumber: "RA-2025-001", policyTitle: "National Broadband Plan Implementation Guidelines", type: "pdf", size: "1.2 MB", version: 3, uploadedBy: "Juan Dela Cruz", uploadedDate: "2025-03-05", division: "PPMRAD", category: "Republic Act", status: "Active", owner: "Juan Dela Cruz", lastEdited: "2025-03-05" },
-  { id: "DOC-002", name: "RA-2025-001_v2.pdf", policyNumber: "RA-2025-001", policyTitle: "National Broadband Plan Implementation Guidelines", type: "pdf", size: "1.1 MB", version: 2, uploadedBy: "Juan Dela Cruz", uploadedDate: "2025-02-20", division: "PPMRAD", category: "Republic Act", status: "Active", owner: "Juan Dela Cruz", lastEdited: "2025-02-20" },
-  { id: "DOC-003", name: "EO-2025-001_v2.pdf", policyNumber: "EO-2025-001", policyTitle: "Cybersecurity Standards for Government Agencies", type: "pdf", size: "2.4 MB", version: 2, uploadedBy: "Maria Santos", uploadedDate: "2025-03-08", division: "PPDD", category: "Executive Order", status: "Active", owner: "Maria Santos", lastEdited: "2025-03-08" },
-  { id: "DOC-004", name: "EO-2025-001_annex.xlsx", policyNumber: "EO-2025-001", policyTitle: "Cybersecurity Standards for Government Agencies", type: "xlsx", size: "340 KB", version: 1, uploadedBy: "Maria Santos", uploadedDate: "2025-02-15", division: "PPDD", category: "Executive Order", status: "Active", owner: "Maria Santos", lastEdited: "2025-02-15" },
-  { id: "DOC-005", name: "EO-2025-002_signed.pdf", policyNumber: "EO-2025-002", policyTitle: "Digital Transformation Acceleration Program", type: "pdf", size: "3.1 MB", version: 1, uploadedBy: "Pedro Reyes", uploadedDate: "2025-03-01", division: "PPMED", category: "Executive Order", status: "Active", owner: "Pedro Reyes", lastEdited: "2025-03-01" },
-  { id: "DOC-006", name: "AO-2025-001_draft.docx", policyNumber: "AO-2025-001", policyTitle: "Data Privacy Compliance Framework for ICT", type: "docx", size: "1.8 MB", version: 1, uploadedBy: "Ana Lim", uploadedDate: "2025-02-28", division: "PPMCAD", category: "Administrative Order", status: "Active", owner: "Ana Lim", lastEdited: "2025-02-28" },
-  { id: "DOC-007", name: "MO-2025-001_final.pdf", policyNumber: "MO-2025-001", policyTitle: "Implementing Rules for E-Government Act", type: "pdf", size: "4.2 MB", version: 4, uploadedBy: "Juan Dela Cruz", uploadedDate: "2025-02-16", division: "PPMED", category: "Memorandum Order", status: "Active", owner: "Juan Dela Cruz", lastEdited: "2025-02-16" },
-  { id: "DOC-008", name: "IS-2025-001_draft.docx", policyNumber: "IS-2025-001", policyTitle: "Joint ICT-Education Technology Standards", type: "docx", size: "1.8 MB", version: 1, uploadedBy: "Maria Santos", uploadedDate: "2025-02-15", division: "PPMRAD", category: "Issuance", status: "Active", owner: "Maria Santos", lastEdited: "2025-02-15" },
-  { id: "DOC-009", name: "IS-2025-002_v1.pdf", policyNumber: "IS-2025-002", policyTitle: "Open Data Policy Framework", type: "pdf", size: "2.0 MB", version: 1, uploadedBy: "Ana Lim", uploadedDate: "2025-02-28", division: "PPMCAD", category: "Issuance", status: "Active", owner: "Ana Lim", lastEdited: "2025-02-28" },
-  { id: "DOC-010", name: "RA-2025-002_cover.jpg", policyNumber: "RA-2025-002", policyTitle: "National AI Strategy Implementation", type: "jpg", size: "450 KB", version: 1, uploadedBy: "Juan Dela Cruz", uploadedDate: "2025-03-01", division: "PPMRAD", category: "Republic Act", status: "Active", owner: "Juan Dela Cruz", lastEdited: "2025-03-01" },
-];
+type QuickFilter = "all" | "pdf" | "docx" | "other";
 
 const fileIcons: Record<string, typeof FileText> = { pdf: FileText, docx: File, xlsx: Sheet, jpg: Image, png: Image };
-const fileColors: Record<string, string> = { pdf: "text-destructive", docx: "text-primary", xlsx: "text-green-600", jpg: "text-amber-500", png: "text-amber-500" };
+const fileColors: Record<string, string> = { pdf: "text-primary", docx: "text-secondary", xlsx: "text-accent", jpg: "text-destructive", png: "text-destructive" };
+
+const divisionMembers: Record<Division, { name: string; email: string }[]> = {
+  PRAD: [
+    { name: "Juan Dela Cruz", email: "juan.delacruz@dict.gov.ph" },
+    { name: "Mia Cortez", email: "mia.cortez@dict.gov.ph" },
+  ],
+  PPDD: [
+    { name: "Maria Santos", email: "maria.santos@dict.gov.ph" },
+    { name: "Leo Garcia", email: "leo.garcia@dict.gov.ph" },
+  ],
+  PPMED: [
+    { name: "Pedro Reyes", email: "pedro.reyes@dict.gov.ph" },
+    { name: "Ella Ramos", email: "ella.ramos@dict.gov.ph" },
+  ],
+  PPMCAD: [
+    { name: "Ana Lim", email: "ana.lim@dict.gov.ph" },
+    { name: "Noel Bautista", email: "noel.bautista@dict.gov.ph" },
+  ],
+};
+
+function buildPreviewBody(doc: RepositoryDocument): string {
+  if (!doc.fileDataUrl) {
+    return `
+      <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#475569;padding:20px;text-align:center;">
+        File preview is unavailable for this legacy record. Upload a new version to enable native preview.
+      </div>
+    `;
+  }
+
+  if (doc.type === "jpg" || doc.type === "png") {
+    return `
+      <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+        <img src="${doc.fileDataUrl}" alt="${doc.name}" style="max-width:100%;max-height:100%;object-fit:contain;" />
+      </div>
+    `;
+  }
+
+  if (doc.type === "pdf") {
+    return `
+      <div style="height:70vh;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;overflow:hidden;">
+        <iframe src="${doc.fileDataUrl}" title="${doc.name}" style="width:100%;height:100%;border:0;"></iframe>
+      </div>
+    `;
+  }
+
+  return `
+    <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;padding:20px;background:#f8fafc;color:#334155;line-height:1.6;">
+      <p><strong>Document:</strong> ${doc.name}</p>
+      <p><strong>Type:</strong> ${doc.type.toUpperCase()}</p>
+      <p><strong>Policy:</strong> ${doc.policyTitle}</p>
+      <p><strong>Division:</strong> ${doc.division}</p>
+      <p><strong>Last Edited:</strong> ${doc.lastEdited}</p>
+      <p style="margin-top:16px;color:#64748b;">Document preview metadata is shown here for non-image/non-PDF files.</p>
+    </div>
+  `;
+}
 
 export default function DocumentRepositoryPage() {
+  const currentUser = getCurrentUser();
+  const [documents, setDocuments] = useState<RepositoryDocument[]>(() => loadDocumentsFromStorage());
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [filterDivision, setFilterDivision] = useState("all");
   const [filterCategory, setFilterCategory] = useState("all");
+  const [quickFilter, setQuickFilter] = useState<QuickFilter>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("list");
-  const [archiveDoc, setArchiveDoc] = useState<Document | null>(null);
-  const [uploadOpen, setUploadOpen] = useState(false);
+  const [archiveDoc, setArchiveDoc] = useState<RepositoryDocument | null>(null);
+  const [detailsDoc, setDetailsDoc] = useState<RepositoryDocument | null>(null);
+  const [renameDoc, setRenameDoc] = useState<RepositoryDocument | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [shareDoc, setShareDoc] = useState<RepositoryDocument | null>(null);
+  const [shareDivision, setShareDivision] = useState<Division | "">("");
+  const [shareMember, setShareMember] = useState("");
+  const [shareNote, setShareNote] = useState("");
   const { toast } = useToast();
 
-  const filtered = mockDocuments.filter((doc) => {
-    if (doc.status === "Archived") return false;
-    if (search && !doc.name.toLowerCase().includes(search.toLowerCase()) && !doc.policyTitle.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filterType !== "all" && doc.type !== filterType) return false;
-    if (filterDivision !== "all" && doc.division !== filterDivision) return false;
-    if (filterCategory !== "all" && doc.category !== filterCategory) return false;
-    return true;
-  });
+  const today = new Date().toISOString().slice(0, 10);
 
-  const stats = {
-    total: mockDocuments.filter((d) => d.status !== "Archived").length,
-    pdf: mockDocuments.filter((d) => d.type === "pdf" && d.status !== "Archived").length,
-    docx: mockDocuments.filter((d) => d.type === "docx" && d.status !== "Archived").length,
-    other: mockDocuments.filter((d) => !["pdf", "docx"].includes(d.type) && d.status !== "Archived").length,
+  useEffect(() => {
+    saveDocumentsToStorage(documents);
+  }, [documents]);
+
+  const downloadDocument = (doc: RepositoryDocument) => {
+    if (!doc.fileDataUrl) {
+      toast({ title: "Download unavailable", description: "This legacy record has no file data. Upload a new version first." });
+      return;
+    }
+
+    const anchor = document.createElement("a");
+    anchor.href = doc.fileDataUrl;
+    anchor.download = doc.name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
   };
 
-  const DocKebab = ({ doc }: { doc: Document }) => (
+  const openPreview = (doc: RepositoryDocument) => {
+    if (doc.fileDataUrl && (doc.type === "pdf" || doc.type === "jpg" || doc.type === "png")) {
+      const tab = window.open(doc.fileDataUrl, "_blank", "noopener,noreferrer");
+      if (!tab) {
+        toast({ title: "Preview blocked", description: "Please allow pop-ups to open document previews." });
+      }
+      return;
+    }
+
+    const previewBody = buildPreviewBody(doc);
+    const fileContent = `Document: ${doc.name}\nPolicy: ${doc.policyTitle}\nDivision: ${doc.division}\nLast Edited: ${doc.lastEdited}`;
+
+    const previewHtml = `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Preview - ${doc.name}</title>
+          <style>
+            body { font-family: Segoe UI, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #ffffff; }
+            .toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
+            button { border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
+            button:hover { background: #e2e8f0; }
+            .meta { color: #475569; font-size: 14px; margin-bottom: 14px; }
+          </style>
+        </head>
+        <body>
+          <h2 style="margin:0 0 6px 0;">${doc.name}</h2>
+          <div class="meta">${doc.policyTitle} • ${doc.division} • v${doc.version}</div>
+          <div class="toolbar">
+            <button id="downloadBtn">Download</button>
+            <button id="printBtn">Print</button>
+          </div>
+          ${previewBody}
+          <script>
+            const content = ${JSON.stringify(fileContent)};
+            document.getElementById('downloadBtn')?.addEventListener('click', () => {
+              const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = ${JSON.stringify(doc.name)};
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            });
+            document.getElementById('printBtn')?.addEventListener('click', () => window.print());
+          </script>
+        </body>
+      </html>
+    `;
+
+    try {
+      const previewBlob = new Blob([previewHtml], { type: "text/html;charset=utf-8" });
+      const previewUrl = URL.createObjectURL(previewBlob);
+      const tab = window.open(previewUrl, "_blank");
+      if (!tab) {
+        URL.revokeObjectURL(previewUrl);
+        toast({ title: "Preview blocked", description: "Please allow pop-ups to open document previews." });
+        return;
+      }
+
+      // Give the browser enough time to load the blob page before releasing the URL.
+      setTimeout(() => URL.revokeObjectURL(previewUrl), 10000);
+    } catch {
+      toast({ title: "Preview unavailable", description: "Unable to open preview for this document." });
+    }
+  };
+
+  const openRename = (doc: RepositoryDocument) => {
+    setRenameDoc(doc);
+    setRenameValue(doc.name);
+  };
+
+  const openShare = (doc: RepositoryDocument) => {
+    setShareDoc(doc);
+    setShareDivision((doc.division as Division) ?? "");
+    setShareMember("");
+    setShareNote("");
+  };
+
+  const updateDocument = (docId: string, updater: (doc: RepositoryDocument) => RepositoryDocument) => {
+    setDocuments((current) => current.map((doc) => (doc.id === docId ? updater(doc) : doc)));
+  };
+
+  const filtered = useMemo(() => {
+    return documents.filter((doc) => {
+      if (doc.status === "Archived") return false;
+      if (search && !doc.name.toLowerCase().includes(search.toLowerCase()) && !doc.policyTitle.toLowerCase().includes(search.toLowerCase())) return false;
+      if (filterType !== "all" && doc.type !== filterType) return false;
+      if (filterDivision !== "all" && doc.division !== filterDivision) return false;
+      if (filterCategory !== "all" && doc.category !== filterCategory) return false;
+      if (quickFilter === "pdf" && doc.type !== "pdf") return false;
+      if (quickFilter === "docx" && doc.type !== "docx") return false;
+      if (quickFilter === "other" && ["pdf", "docx"].includes(doc.type)) return false;
+      return true;
+    });
+  }, [documents, filterType, filterDivision, filterCategory, quickFilter, search]);
+
+  const stats = {
+    total: documents.filter((d) => d.status !== "Archived").length,
+    pdf: documents.filter((d) => d.type === "pdf" && d.status !== "Archived").length,
+    docx: documents.filter((d) => d.type === "docx" && d.status !== "Archived").length,
+    other: documents.filter((d) => !["pdf", "docx"].includes(d.type) && d.status !== "Archived").length,
+  };
+
+  const updatePolicyArchiveState = (policyId: string, policyNumber: string, shouldArchive: boolean) => {
+    const now = new Date().toISOString().slice(0, 10);
+    const policies = loadPoliciesFromStorage();
+    const nextPolicies = policies.map((policy) => {
+      if (policy.id !== policyId && policy.policyNumber !== policyNumber) {
+        return policy;
+      }
+
+      return {
+        ...policy,
+        archived: shouldArchive,
+        status: shouldArchive ? "On Hold" : policy.status,
+        lastUpdated: now,
+        lastEditedBy: currentUser.name,
+        remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${now} | ${shouldArchive ? "Archived from repository" : "Returned to active repository"}`,
+      };
+    });
+
+    savePoliciesToStorage(nextPolicies);
+  };
+
+  const handleRenameSave = () => {
+    if (!renameDoc || !renameValue.trim()) {
+      return;
+    }
+
+    updateDocument(renameDoc.id, (doc) => ({
+      ...doc,
+      name: renameValue.trim(),
+      lastEdited: new Date().toISOString().slice(0, 10),
+      remarks: `${today} | Renamed document to ${renameValue.trim()}`,
+    }));
+
+    appendActivity({ user: currentUser.name, action: "Renamed repository document", policyTitle: renameDoc.policyTitle, type: "update" });
+    appendPolicyNotifications({
+      policyId: renameDoc.policyId,
+      policyTitle: renameDoc.policyTitle,
+      changeType: "Document renamed",
+      recipients: Array.from(new Set([...(renameDoc.accessEmails ?? []), currentUser.email])),
+    });
+
+    setRenameDoc(null);
+    toast({ title: "Document renamed", description: "The document name has been updated." });
+  };
+
+  const handleShareSave = () => {
+    if (!shareDoc || !shareDivision || !shareMember) {
+      return;
+    }
+
+    const member = divisionMembers[shareDivision].find((entry) => entry.email === shareMember);
+    if (!member) {
+      return;
+    }
+
+    updateDocument(shareDoc.id, (doc) => ({
+      ...doc,
+      accessEmails: Array.from(new Set([...(doc.accessEmails ?? []), member.email])),
+      lastEdited: new Date().toISOString().slice(0, 10),
+      remarks: `${today} | ${shareNote.trim() || `Shared access with ${member.name} (${shareDivision})`}`,
+    }));
+
+    appendActivity({ user: currentUser.name, action: `Granted access to ${member.name}`, policyTitle: shareDoc.policyTitle, type: "update" });
+    appendPolicyNotifications({
+      policyId: shareDoc.policyId,
+      policyTitle: shareDoc.policyTitle,
+      changeType: `Document access granted to ${member.name}`,
+      recipients: Array.from(new Set([...(shareDoc.accessEmails ?? []), member.email, currentUser.email])),
+    });
+
+    setShareDoc(null);
+    toast({ title: "Access granted", description: `${member.name} now has access to this document.` });
+  };
+
+  const handleArchiveConfirm = () => {
+    if (!archiveDoc) {
+      return;
+    }
+
+    updateDocument(archiveDoc.id, (doc) => ({
+      ...doc,
+      status: "Archived",
+      lastEdited: new Date().toISOString().slice(0, 10),
+      remarks: `${today} | Archived before deletion`,
+    }));
+
+    updatePolicyArchiveState(archiveDoc.policyId, archiveDoc.policyNumber, true);
+
+    appendActivity({ user: currentUser.name, action: "Archived repository document", policyTitle: archiveDoc.policyTitle, type: "status" });
+    appendPolicyNotifications({
+      policyId: archiveDoc.policyId,
+      policyTitle: archiveDoc.policyTitle,
+      changeType: "Policy and document archived",
+      recipients: Array.from(new Set([...(archiveDoc.accessEmails ?? []), currentUser.email])),
+    });
+
+    toast({ title: "Document archived", description: `${archiveDoc.name} was archived successfully.` });
+    setArchiveDoc(null);
+  };
+
+  const DocKebab = ({ doc }: { doc: RepositoryDocument }) => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
@@ -95,9 +367,9 @@ export default function DocumentRepositoryPage() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem><Info className="h-4 w-4 mr-2" /> Details</DropdownMenuItem>
-        <DropdownMenuItem><Pencil className="h-4 w-4 mr-2" /> Rename</DropdownMenuItem>
-        <DropdownMenuItem><Share2 className="h-4 w-4 mr-2" /> Share</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setDetailsDoc(doc)}><Info className="h-4 w-4 mr-2" /> Details</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openRename(doc)}><Pencil className="h-4 w-4 mr-2" /> Rename</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openShare(doc)}><Share2 className="h-4 w-4 mr-2" /> Share</DropdownMenuItem>
         <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setArchiveDoc(doc)}>
           <Archive className="h-4 w-4 mr-2" /> Archive
         </DropdownMenuItem>
@@ -105,91 +377,65 @@ export default function DocumentRepositoryPage() {
     </DropdownMenu>
   );
 
+  const cardClass = (value: QuickFilter) =>
+    `shadow-card border-border/50 cursor-pointer transition-colors ${quickFilter === value ? "ring-1 ring-primary bg-primary/5" : "hover:bg-muted/20"}`;
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Document Repository</h1>
-          <p className="text-muted-foreground text-sm mt-1">Upload, manage, and download policy documents.</p>
+          <p className="text-muted-foreground text-sm mt-1">Manage and download policy documents synchronized from Policy Tracker uploads.</p>
         </div>
-        <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-          <DialogTrigger asChild>
-            <Button variant="hero" size="sm"><Upload className="h-4 w-4 mr-1" /> Upload Document</Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-lg">
-            <DialogHeader><DialogTitle>Upload Document</DialogTitle></DialogHeader>
-            <div className="space-y-4 mt-2">
-              <div className="space-y-2">
-                <Label>Associated Policy</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Select policy" /></SelectTrigger>
-                  <SelectContent>
-                    {mockPolicies.map((p) => <SelectItem key={p.id} value={p.id}>{p.policyNumber} – {p.title}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Select category" /></SelectTrigger>
-                  <SelectContent>
-                    {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Division</Label>
-                <Select>
-                  <SelectTrigger><SelectValue placeholder="Select division" /></SelectTrigger>
-                  <SelectContent>
-                    {divisions.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>File</Label>
-                <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer">
-                  <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">Click to browse or drag and drop</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">PDF, DOCX, XLSX, JPG, PNG (max 20MB)</p>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Remarks / Notes</Label>
-                <Textarea placeholder="Add any notes about this document..." />
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setUploadOpen(false)}>Cancel</Button>
-                <Button variant="hero" onClick={() => { toast({ title: "Upload started", description: "Document is being uploaded." }); setUploadOpen(false); }}>Upload</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Documents", value: stats.total, icon: FolderOpen },
-          { label: "PDF Files", value: stats.pdf, icon: FileText },
-          { label: "Word Documents", value: stats.docx, icon: File },
-          { label: "Other Files", value: stats.other, icon: Image },
-        ].map((s, i) => (
-          <Card key={i} className="shadow-card border-border/50">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <s.icon className="h-5 w-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-foreground">{s.value}</p>
-                <p className="text-xs text-muted-foreground">{s.label}</p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        <Card className={cardClass("all")} onClick={() => setQuickFilter("all")}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <FolderOpen className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.total}</p>
+              <p className="text-xs text-muted-foreground">Total Documents</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={cardClass("pdf")} onClick={() => setQuickFilter("pdf")}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <FileText className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.pdf}</p>
+              <p className="text-xs text-muted-foreground">PDF Files</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={cardClass("docx")} onClick={() => setQuickFilter("docx")}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <File className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.docx}</p>
+              <p className="text-xs text-muted-foreground">Word Documents</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={cardClass("other")} onClick={() => setQuickFilter("other")}>
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Image className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-foreground">{stats.other}</p>
+              <p className="text-xs text-muted-foreground">Other Files</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Search & Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -226,7 +472,6 @@ export default function DocumentRepositoryPage() {
         </div>
       </div>
 
-      {/* Document List / Grid */}
       {viewMode === "list" ? (
         <Card className="shadow-card border-border/50">
           <CardHeader><CardTitle className="text-sm">Documents ({filtered.length})</CardTitle></CardHeader>
@@ -253,8 +498,8 @@ export default function DocumentRepositoryPage() {
                         <span>{doc.owner}</span>
                       </div>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"><Eye className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => toast({ title: "Download started", description: `Downloading ${doc.name}` })}><Download className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openPreview(doc)}><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => downloadDocument(doc)}><Download className="h-4 w-4" /></Button>
                         <DocKebab doc={doc} />
                       </div>
                     </div>
@@ -295,8 +540,8 @@ export default function DocumentRepositoryPage() {
                     <Clock className="h-3 w-3" />{doc.lastEdited} · {doc.owner}
                   </div>
                   <div className="flex gap-1 mt-3 pt-3 border-t border-border/50">
-                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs"><Eye className="h-3 w-3 mr-1" /> Preview</Button>
-                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => toast({ title: "Download started", description: `Downloading ${doc.name}` })}><Download className="h-3 w-3 mr-1" /> Download</Button>
+                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => openPreview(doc)}><Eye className="h-3 w-3 mr-1" /> Preview</Button>
+                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => downloadDocument(doc)}><Download className="h-3 w-3 mr-1" /> Download</Button>
                   </div>
                 </CardContent>
               </Card>
@@ -311,7 +556,6 @@ export default function DocumentRepositoryPage() {
         </div>
       )}
 
-      {/* Archive Confirmation Dialog */}
       <Dialog open={!!archiveDoc} onOpenChange={(open) => !open && setArchiveDoc(null)}>
         <DialogContent>
           <DialogHeader>
@@ -330,9 +574,95 @@ export default function DocumentRepositoryPage() {
           <p className="text-sm text-muted-foreground">Are you sure you want to archive this document?</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setArchiveDoc(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { toast({ title: "Policy archived successfully" }); setArchiveDoc(null); }}>
+            <Button variant="destructive" onClick={handleArchiveConfirm}>
               <Archive className="h-4 w-4 mr-1" /> Archive
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!detailsDoc} onOpenChange={(open) => !open && setDetailsDoc(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Document Details</DialogTitle>
+            <DialogDescription>Complete metadata and access details for this document.</DialogDescription>
+          </DialogHeader>
+          {detailsDoc && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div><span className="font-medium text-foreground">Uploaded By:</span> <span className="text-muted-foreground">{detailsDoc.uploadedBy}</span></div>
+              <div><span className="font-medium text-foreground">Last Edited By:</span> <span className="text-muted-foreground">{detailsDoc.owner}</span></div>
+              <div><span className="font-medium text-foreground">People With Access:</span> <span className="text-muted-foreground">{(detailsDoc.accessEmails ?? ["oicdirector@dict.gov.ph"]).join(", ")}</span></div>
+              <div><span className="font-medium text-foreground">Division:</span> <span className="text-muted-foreground">{detailsDoc.division}</span></div>
+              <div><span className="font-medium text-foreground">Date Modified:</span> <span className="text-muted-foreground">{detailsDoc.lastEdited}</span></div>
+              <div><span className="font-medium text-foreground">Date Created:</span> <span className="text-muted-foreground">{detailsDoc.uploadedDate}</span></div>
+              <div>
+                <span className="font-medium text-foreground">Link:</span>{" "}
+                <a href={`https://dict.gov.ph/repository/${detailsDoc.id.toLowerCase()}`} target="_blank" rel="noreferrer" className="text-primary hover:underline">Open Link</a>
+              </div>
+              <div className="md:col-span-2"><span className="font-medium text-foreground">Remarks / Notes:</span> <span className="text-muted-foreground">{detailsDoc.remarks || "-"}</span></div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameDoc} onOpenChange={(open) => !open && setRenameDoc(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Document</DialogTitle>
+            <DialogDescription>Update the document file name.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-doc">Document Name</Label>
+            <Input id="rename-doc" value={renameValue} onChange={(event) => setRenameValue(event.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDoc(null)}>Cancel</Button>
+            <Button variant="hero" onClick={handleRenameSave} disabled={!renameValue.trim()}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!shareDoc} onOpenChange={(open) => !open && setShareDoc(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share Document</DialogTitle>
+            <DialogDescription>Grant access by selecting Division and Member.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Division</Label>
+              <Select value={shareDivision} onValueChange={(value: Division) => { setShareDivision(value); setShareMember(""); }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select division" />
+                </SelectTrigger>
+                <SelectContent>
+                  {divisions.map((division) => (
+                    <SelectItem key={division} value={division}>{division}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Member</Label>
+              <Select value={shareMember} onValueChange={setShareMember} disabled={!shareDivision}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(shareDivision ? divisionMembers[shareDivision] : []).map((member) => (
+                    <SelectItem key={member.email} value={member.email}>{member.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="share-note">Remarks / Note</Label>
+              <Textarea id="share-note" value={shareNote} onChange={(event) => setShareNote(event.target.value)} placeholder="Optional note for access sharing" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareDoc(null)}>Cancel</Button>
+            <Button variant="hero" onClick={handleShareSave} disabled={!shareDivision || !shareMember}>Grant Access</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

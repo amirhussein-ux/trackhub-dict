@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { Outlet, useNavigate } from "react-router-dom";
@@ -21,15 +21,27 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { mockNotifications } from "@/lib/mock-data";
+import { loadNotificationsFromStorage, saveNotificationsToStorage, subscribeToDataUpdates } from "@/lib/records-storage";
+import { getCurrentUser } from "@/lib/user-session";
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const currentUser = getCurrentUser();
+  const [notifications, setNotifications] = useState(() => loadNotificationsFromStorage());
   const unreadCount = notifications.filter((n) => !n.read).length;
 
+  useEffect(() => {
+    return subscribeToDataUpdates(() => {
+      setNotifications(loadNotificationsFromStorage());
+    });
+  }, []);
+
   const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setNotifications((prev) => {
+      const next = prev.map((n) => ({ ...n, read: true }));
+      saveNotificationsToStorage(next);
+      return next;
+    });
   };
 
   const groupByDate = (items: typeof notifications) => {
@@ -53,12 +65,12 @@ export default function DashboardLayout() {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top Nav */}
-          <header className="h-14 flex items-center justify-between border-b border-border bg-card px-4 sticky top-0 z-30">
+          <header className="h-14 flex items-center justify-between border-b border-border bg-primary text-primary-foreground px-4 sticky top-0 z-30">
             <div className="flex items-center gap-3">
-              <SidebarTrigger className="text-muted-foreground" />
+              <SidebarTrigger className="text-primary-foreground/80 hover:text-primary-foreground" />
               <div className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input placeholder="Search by ID, title, division, status..." className="pl-9 h-9 w-80 bg-background" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black" />
+                <Input placeholder="Search by ID, title, division, status..." className="pl-9 h-9 w-80 bg-background/95 text-foreground" />
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -96,7 +108,11 @@ export default function DashboardLayout() {
                                 key={n.id}
                                 className={`w-full text-left p-3 rounded-lg hover:bg-muted/50 transition-colors flex items-start gap-3 ${!n.read ? "bg-primary/5" : ""}`}
                                 onClick={() => {
-                                  setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+                                  setNotifications((prev) => {
+                                    const next = prev.map((x) => (x.id === n.id ? { ...x, read: true } : x));
+                                    saveNotificationsToStorage(next);
+                                    return next;
+                                  });
                                   navigate(`/dashboard/policies/${n.policyId}`);
                                 }}
                               >
@@ -127,8 +143,8 @@ export default function DashboardLayout() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="px-3 py-2">
-                    <p className="text-sm font-medium text-foreground">OIC Director Sanchez</p>
-                    <p className="text-xs text-muted-foreground">oicdirector@dict.gov.ph</p>
+                    <p className="text-sm font-medium text-foreground">{currentUser.name}</p>
+                    <p className="text-xs text-muted-foreground">{currentUser.email}</p>
                   </div>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => navigate("/dashboard/profile")}>
