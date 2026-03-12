@@ -46,7 +46,7 @@ export default function FirstLoginPasswordChangePage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 650));
-    const result = requestFirstLoginCode(identifier, email);
+    const result = await requestFirstLoginCode(identifier, email);
     setLoading(false);
 
     if (result.ok === false) {
@@ -66,7 +66,7 @@ export default function FirstLoginPasswordChangePage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 450));
-    const result = verifyFirstLoginCode(identifier, code);
+    const result = await verifyFirstLoginCode(identifier, code);
     setLoading(false);
 
     if (result.ok === false) {
@@ -89,7 +89,7 @@ export default function FirstLoginPasswordChangePage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 700));
-    const result = completeFirstLoginPasswordChange(identifier, code, newPassword);
+    const result = await completeFirstLoginPasswordChange(identifier, code, newPassword);
     setLoading(false);
 
     if (result.ok === false) {

@@ -1,19 +1,13 @@
+import { apiRequest } from "@/lib/api/client";
+
 type UserRecord = {
   identifier: string;
   email: string;
   name: string;
   role: "Admin" | "Policy Owner" | "Policy Access" | "Viewer";
-  password: string;
-  firstLogin: boolean;
 };
 
-export type AuthenticatedUser = Pick<UserRecord, "identifier" | "email" | "name" | "role">;
-
-type CodeRecord = {
-  code: string;
-  expiresAt: number;
-  used: boolean;
-};
+export type AuthenticatedUser = UserRecord;
 
 type PasswordRuleResult = {
   minLength: boolean;
@@ -23,47 +17,16 @@ type PasswordRuleResult = {
   hasSpecial: boolean;
 };
 
-const users: UserRecord[] = [
-  {
-    identifier: "admin",
-    email: "admin@dict.gov.ph",
-    name: "OIC Director Sanchez",
-    role: "Admin",
-    password: "Admin@1234",
-    firstLogin: false,
-  },
-  {
-    identifier: "jane.dela.cruz",
-    email: "jane.dela.cruz@dict.gov.ph",
-    name: "Jane Dela Cruz",
-    role: "Policy Owner",
-    password: "Secure@2025",
-    firstLogin: false,
-  },
-  {
-    identifier: "new.user",
-    email: "new.user@dict.gov.ph",
-    name: "New User",
-    role: "Policy Access",
-    password: "Temp@1234",
-    firstLogin: true,
-  },
-];
+type ApiMessage = {
+  message: string;
+};
 
-const resetCodes = new Map<string, CodeRecord>();
-const firstLoginCodes = new Map<string, CodeRecord>();
+function asMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
 
-function normalize(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function getUserByIdentifier(identifier: string): UserRecord | undefined {
-  const normalized = normalize(identifier);
-  return users.find((user) => normalize(user.identifier) === normalized || normalize(user.email) === normalized);
-}
-
-function generateNumericCode(length = 6): string {
-  return Array.from({ length }, () => Math.floor(Math.random() * 10)).join("");
+  return "Something went wrong. Please try again.";
 }
 
 export function getPasswordRuleResult(password: string): PasswordRuleResult {
@@ -81,154 +44,105 @@ export function isPasswordStrong(password: string): boolean {
   return Object.values(result).every(Boolean);
 }
 
-export function authenticateUser(identifier: string, password: string):
+export async function authenticateUser(identifier: string, password: string): Promise<
   | { ok: true; firstLogin: boolean; user: AuthenticatedUser }
-  | { ok: false; message: string } {
-  const user = getUserByIdentifier(identifier);
-  if (!user || user.password !== password) {
-    return { ok: false, message: "Invalid username/email or password." };
-  }
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await apiRequest<{ firstLogin: boolean; user: AuthenticatedUser }>("/auth/login", {
+      method: "POST",
+      body: { identifier, password },
+    });
 
-  const { identifier: userIdentifier, email, name, role } = user;
-  return { ok: true, firstLogin: user.firstLogin, user: { identifier: userIdentifier, email, name, role } };
+    return { ok: true, firstLogin: response.firstLogin, user: response.user };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
+  }
 }
 
-export function requestPasswordReset(email: string):
+export async function requestPasswordReset(email: string): Promise<
   | { ok: true; expiresInMinutes: number; previewCode: string }
-  | { ok: false; message: string } {
-  const user = users.find((candidate) => normalize(candidate.email) === normalize(email));
-  if (!user) {
-    return { ok: false, message: "No account found for that webmail email." };
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await apiRequest<{ expiresInMinutes: number; previewCode: string }>("/auth/forgot-password/request-code", {
+      method: "POST",
+      body: { email },
+    });
+
+    return { ok: true, expiresInMinutes: response.expiresInMinutes, previewCode: response.previewCode };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  const code = generateNumericCode();
-  const expiresInMinutes = 20;
-
-  resetCodes.set(normalize(user.email), {
-    code,
-    used: false,
-    expiresAt: Date.now() + expiresInMinutes * 60 * 1000,
-  });
-
-  return { ok: true, expiresInMinutes, previewCode: code };
 }
 
-export function verifyPasswordResetCode(email: string, code: string): { ok: true } | { ok: false; message: string } {
-  const record = resetCodes.get(normalize(email));
-  if (!record) {
-    return { ok: false, message: "No reset request found. Please request a new code." };
-  }
+export async function verifyPasswordResetCode(email: string, code: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await apiRequest<{ ok: true } | ApiMessage>("/auth/forgot-password/verify-code", {
+      method: "POST",
+      body: { email, code },
+    });
 
-  if (record.used || record.expiresAt < Date.now()) {
-    resetCodes.delete(normalize(email));
-    return { ok: false, message: "Reset code is invalid or expired." };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  if (record.code !== code.trim()) {
-    return { ok: false, message: "Incorrect reset code." };
-  }
-
-  return { ok: true };
 }
 
-export function updatePasswordFromReset(email: string, code: string, newPassword: string): { ok: true } | { ok: false; message: string } {
-  if (!isPasswordStrong(newPassword)) {
-    return { ok: false, message: "New password does not meet security requirements." };
+export async function updatePasswordFromReset(email: string, code: string, newPassword: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await apiRequest<{ ok: true } | ApiMessage>("/auth/forgot-password/reset", {
+      method: "POST",
+      body: { email, code, newPassword },
+    });
+
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  const verification = verifyPasswordResetCode(email, code);
-  if ("message" in verification) {
-    return { ok: false, message: verification.message };
-  }
-
-  const user = users.find((candidate) => normalize(candidate.email) === normalize(email));
-  if (!user) {
-    return { ok: false, message: "Account no longer exists." };
-  }
-
-  user.password = newPassword;
-  user.firstLogin = false;
-
-  const record = resetCodes.get(normalize(email));
-  if (record) {
-    record.used = true;
-  }
-  resetCodes.delete(normalize(email));
-
-  return { ok: true };
 }
 
-export function requestFirstLoginCode(identifier: string, email: string):
+export async function requestFirstLoginCode(identifier: string, email: string): Promise<
   | { ok: true; expiresInMinutes: number; previewCode: string }
-  | { ok: false; message: string } {
-  const user = getUserByIdentifier(identifier);
-  if (!user || !user.firstLogin) {
-    return { ok: false, message: "First-login session is no longer valid. Please sign in again." };
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await apiRequest<{ expiresInMinutes: number; previewCode: string }>("/auth/first-login/request-code", {
+      method: "POST",
+      body: { identifier, email },
+    });
+
+    return { ok: true, expiresInMinutes: response.expiresInMinutes, previewCode: response.previewCode };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  if (normalize(user.email) !== normalize(email)) {
-    return { ok: false, message: "Entered email does not match the account record." };
-  }
-
-  const code = generateNumericCode();
-  const expiresInMinutes = 15;
-  firstLoginCodes.set(normalize(user.identifier), {
-    code,
-    used: false,
-    expiresAt: Date.now() + expiresInMinutes * 60 * 1000,
-  });
-
-  return { ok: true, expiresInMinutes, previewCode: code };
 }
 
-export function verifyFirstLoginCode(identifier: string, code: string): { ok: true } | { ok: false; message: string } {
-  const user = getUserByIdentifier(identifier);
-  if (!user || !user.firstLogin) {
-    return { ok: false, message: "First-login session is no longer valid. Please sign in again." };
-  }
+export async function verifyFirstLoginCode(identifier: string, code: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await apiRequest<{ ok: true } | ApiMessage>("/auth/first-login/verify-code", {
+      method: "POST",
+      body: { identifier, code },
+    });
 
-  const record = firstLoginCodes.get(normalize(user.identifier));
-  if (!record) {
-    return { ok: false, message: "No verification code found. Please request a new one." };
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  if (record.used || record.expiresAt < Date.now()) {
-    firstLoginCodes.delete(normalize(user.identifier));
-    return { ok: false, message: "Verification code is invalid or expired." };
-  }
-
-  if (record.code !== code.trim()) {
-    return { ok: false, message: "Incorrect verification code." };
-  }
-
-  return { ok: true };
 }
 
-export function completeFirstLoginPasswordChange(identifier: string, code: string, newPassword: string):
+export async function completeFirstLoginPasswordChange(identifier: string, code: string, newPassword: string): Promise<
   | { ok: true; email: string }
-  | { ok: false; message: string } {
-  if (!isPasswordStrong(newPassword)) {
-    return { ok: false, message: "New password does not meet security requirements." };
+  | { ok: false; message: string }
+> {
+  try {
+    const response = await apiRequest<{ ok: true; email: string }>("/auth/first-login/complete", {
+      method: "POST",
+      body: { identifier, code, newPassword },
+    });
+
+    return { ok: true, email: response.email };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
   }
-
-  const verification = verifyFirstLoginCode(identifier, code);
-  if ("message" in verification) {
-    return { ok: false, message: verification.message };
-  }
-
-  const user = getUserByIdentifier(identifier);
-  if (!user) {
-    return { ok: false, message: "Account not found." };
-  }
-
-  user.password = newPassword;
-  user.firstLogin = false;
-
-  const record = firstLoginCodes.get(normalize(user.identifier));
-  if (record) {
-    record.used = true;
-  }
-  firstLoginCodes.delete(normalize(user.identifier));
-
-  return { ok: true, email: user.email };
 }

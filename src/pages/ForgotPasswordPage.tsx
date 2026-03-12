@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 600));
-    const response = requestPasswordReset(email);
+    const response = await requestPasswordReset(email);
     setLoading(false);
 
     if (response.ok === false) {
@@ -54,7 +54,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 450));
-    const verification = verifyPasswordResetCode(email, code);
+    const verification = await verifyPasswordResetCode(email, code);
     setLoading(false);
 
     if (verification.ok === false) {
@@ -76,7 +76,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 650));
-    const resetResponse = updatePasswordFromReset(email, code, newPassword);
+    const resetResponse = await updatePasswordFromReset(email, code, newPassword);
     setLoading(false);
 
     if (resetResponse.ok === false) {

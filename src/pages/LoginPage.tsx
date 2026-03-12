@@ -26,7 +26,7 @@ export default function LoginPage() {
       return;
     }
 
-    const authResult = authenticateUser(identifier, password);
+    const authResult = await authenticateUser(identifier, password);
     if (authResult.ok === false) {
       toast({ title: "Authentication failed", description: authResult.message, variant: "destructive" });
       return;

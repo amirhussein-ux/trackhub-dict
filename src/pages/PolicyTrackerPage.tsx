@@ -13,7 +13,7 @@ import { Archive, ChevronLeft, ChevronRight, ExternalLink, Info, MoreVertical, P
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { divisions, type Division, type Policy, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
-import { loadPoliciesFromStorage, savePoliciesToStorage } from "@/lib/policy-storage";
+import { createPolicyInApi, loadPoliciesFromStorage, updatePolicyInApi } from "@/lib/policy-storage";
 import {
   appendActivity,
   appendPolicyNotifications,
@@ -22,6 +22,7 @@ import {
   getDocumentTypeFromFilename,
   loadDocumentsFromStorage,
   saveDocumentsToStorage,
+  subscribeToDataUpdates,
   type RepositoryDocument,
 } from "@/lib/records-storage";
 import { canManagePolicies, getCurrentUser } from "@/lib/user-session";
@@ -144,12 +145,7 @@ export default function PolicyTrackerPage() {
   const { toast } = useToast();
   const currentUser = getCurrentUser();
   const canCreatePolicy = canManagePolicies(currentUser);
-  const [policies, setPolicies] = useState<ManagedPolicy[]>(() => {
-    return loadPoliciesFromStorage().map((policy) => {
-      const hasRemarks = Boolean(policy.remarks?.trim());
-      return hasRemarks ? (policy as ManagedPolicy) : ({ ...policy, status: "On Hold" } as ManagedPolicy);
-    });
-  });
+  const [policies, setPolicies] = useState<ManagedPolicy[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [divisionFilter, setDivisionFilter] = useState<string>("all");
@@ -186,8 +182,14 @@ export default function PolicyTrackerPage() {
   const availableMembers = shareDivision ? divisionMembers[shareDivision] : [];
 
   useEffect(() => {
-    savePoliciesToStorage(policies);
-  }, [policies]);
+    // Trigger initial hydration and subscribe so state stays in sync with the API cache.
+    loadPoliciesFromStorage();
+    return subscribeToDataUpdates(() => {
+      setPolicies(
+        loadPoliciesFromStorage().map((policy) => (policy as ManagedPolicy))
+      );
+    });
+  }, []);
 
   const getNotificationRecipients = (policy: ManagedPolicy, extraRecipients: string[] = []) => {
     return Array.from(new Set([...(policy.accessEmails ?? []), currentUser.email, ...extraRecipients]));
@@ -298,25 +300,24 @@ export default function PolicyTrackerPage() {
     let uploadedVersion = false;
     let uploadError = false;
 
-    updatePolicy(selectedPolicy.id, (policy) => {
-      const nextRemarks = statusChanged ? appendRemarkHistory(policy, editMessage, now) : policy.remarks;
-      const resolvedStatus = nextRemarks?.trim() ? editForm.status : "On Hold";
-
-      return {
-        ...policy,
-        policyNumber: editForm.policyNumber.trim(),
-        title: editForm.title.trim(),
-        division: editForm.division,
-        status: resolvedStatus,
-        archived: policy.archived,
-        type: inferPolicyType(editForm.policyNumber.trim()),
-        referenceLink: editForm.referenceLink.trim() || undefined,
-        lastUpdated: now,
-        remarks: nextRemarks,
-        lastEditedBy: currentUser.name,
-        accessEmails: Array.from(new Set([...(policy.accessEmails ?? []), ...divisionMembers[editForm.division].map((member) => member.email)])),
-      };
-    });
+    const nextRemarks = statusChanged ? appendRemarkHistory(selectedPolicy, editMessage, now) : selectedPolicy.remarks;
+    const resolvedStatus = nextRemarks?.trim() ? editForm.status : "On Hold";
+    const editedPolicy: ManagedPolicy = {
+      ...selectedPolicy,
+      policyNumber: editForm.policyNumber.trim(),
+      title: editForm.title.trim(),
+      division: editForm.division,
+      status: resolvedStatus,
+      archived: selectedPolicy.archived,
+      type: inferPolicyType(editForm.policyNumber.trim()),
+      referenceLink: editForm.referenceLink.trim() || undefined,
+      lastUpdated: now,
+      remarks: nextRemarks,
+      lastEditedBy: currentUser.name,
+      accessEmails: Array.from(new Set([...(selectedPolicy.accessEmails ?? []), ...divisionMembers[editForm.division].map((member) => member.email)])),
+    };
+    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? editedPolicy : p)));
+    void updatePolicyInApi(selectedPolicy.id, editedPolicy);
 
     if (editVersionFile) {
       const docType = getDocumentTypeFromFilename(editVersionFile.name);
@@ -418,9 +419,9 @@ export default function PolicyTrackerPage() {
     const initialStatus: PolicyStatus = initialRemarks ? newPolicyForm.status : "On Hold";
     const now = new Date().toISOString().slice(0, 10);
     const initialRemarkEntry = initialRemarks ? buildRemarkEntry(initialRemarks, now) : "";
-    const nextId = `POL-${new Date().getFullYear()}-${String(policies.length + 1).padStart(3, "0")}`;
-    const newPolicy: ManagedPolicy = {
-      id: nextId,
+
+    // Build the payload without an id — the server assigns the real MongoDB id.
+    const newPolicyPayload = {
       policyNumber: newPolicyForm.policyNumber.trim(),
       title: newPolicyForm.title.trim(),
       division: newPolicyForm.division,
@@ -438,6 +439,18 @@ export default function PolicyTrackerPage() {
       archived: false,
     };
 
+    let savedPolicy: ManagedPolicy;
+    try {
+      savedPolicy = await createPolicyInApi(newPolicyPayload) as ManagedPolicy;
+    } catch {
+      toast({
+        title: "Failed to create policy",
+        description: "Could not save the policy to the server. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     let createdDocuments: RepositoryDocument[] = [];
     try {
       const existingDocuments = loadDocumentsFromStorage();
@@ -445,24 +458,24 @@ export default function PolicyTrackerPage() {
         const { dataUrl, mimeType } = await fileToDataUrl(file);
         return {
           id: `DOC-${String(existingDocuments.length + index + 1).padStart(3, "0")}`,
-          policyId: nextId,
+          policyId: savedPolicy.id,
           name: file.name,
-          policyNumber: newPolicy.policyNumber,
-          policyTitle: newPolicy.title,
+          policyNumber: savedPolicy.policyNumber,
+          policyTitle: savedPolicy.title,
           type: getDocumentTypeFromFilename(file.name) as RepositoryDocument["type"],
           size: formatBytesToReadableSize(file.size),
           version: index + 1,
           uploadedBy: currentUser.name,
           uploadedDate: now,
-          division: newPolicy.division,
-          category: newPolicy.type,
+          division: savedPolicy.division,
+          category: savedPolicy.type,
           status: "Active",
           owner: currentUser.name,
           lastEdited: now,
           fileDataUrl: dataUrl,
           fileMimeType: mimeType,
           remarks: `${now} | ${initialRemarks || `Uploaded as version ${index + 1}`}`,
-          accessEmails: newPolicy.accessEmails,
+          accessEmails: savedPolicy.accessEmails,
         };
       }));
 
@@ -476,16 +489,15 @@ export default function PolicyTrackerPage() {
       return;
     }
 
-    setPolicies((current) => [newPolicy, ...current]);
     setAddOpen(false);
     setNewPolicyForm(defaultFormState);
     setNewPolicyFiles([]);
     setPage(1);
 
-    registerPolicyAction(newPolicy, "Created new policy record", "create", getNotificationRecipients(newPolicy));
-    registerPolicyAction(newPolicy, `Uploaded ${createdDocuments.length} document version(s)`, "upload", getNotificationRecipients(newPolicy));
+    registerPolicyAction(savedPolicy, "Created new policy record", "create", getNotificationRecipients(savedPolicy));
+    registerPolicyAction(savedPolicy, `Uploaded ${createdDocuments.length} document version(s)`, "upload", getNotificationRecipients(savedPolicy));
 
-    toast({ title: "Policy added", description: `New policy ${newPolicy.policyNumber} has been created.` });
+    toast({ title: "Policy added", description: `New policy ${savedPolicy.policyNumber} has been created.` });
   };
 
   const handleShareSave = () => {
@@ -500,12 +512,14 @@ export default function PolicyTrackerPage() {
 
     const now = new Date().toISOString().slice(0, 10);
 
-    updatePolicy(selectedPolicy.id, (policy) => ({
-      ...policy,
-      accessEmails: Array.from(new Set([...(policy.accessEmails ?? []), memberRecord.email])),
+    const sharedPolicy: ManagedPolicy = {
+      ...selectedPolicy,
+      accessEmails: Array.from(new Set([...(selectedPolicy.accessEmails ?? []), memberRecord.email])),
       lastUpdated: now,
-      remarks: appendRemarkHistory(policy, shareNote.trim() || `Shared access with ${memberRecord.name} (${shareDivision})`, now),
-    }));
+      remarks: appendRemarkHistory(selectedPolicy, shareNote.trim() || `Shared access with ${memberRecord.name} (${shareDivision})`, now),
+    };
+    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? sharedPolicy : p)));
+    void updatePolicyInApi(selectedPolicy.id, sharedPolicy);
 
     registerPolicyAction(
       selectedPolicy,
@@ -525,13 +539,15 @@ export default function PolicyTrackerPage() {
 
     const now = new Date().toISOString().slice(0, 10);
 
-    updatePolicy(selectedPolicy.id, (policy) => ({
-      ...policy,
+    const archivedPolicy: ManagedPolicy = {
+      ...selectedPolicy,
       archived: true,
       status: "On Hold",
       lastUpdated: now,
-      remarks: appendRemarkHistory(policy, "Archived and retained for records management", now),
-    }));
+      remarks: appendRemarkHistory(selectedPolicy, "Archived and retained for records management", now),
+    };
+    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? archivedPolicy : p)));
+    void updatePolicyInApi(selectedPolicy.id, archivedPolicy);
 
     const relatedDocuments = loadDocumentsFromStorage();
     const archivedDocuments = relatedDocuments.map((doc) => {

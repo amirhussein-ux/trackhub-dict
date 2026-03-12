@@ -7,8 +7,6 @@ export type SessionUser = {
   role: UserRole;
 };
 
-const SESSION_USER_KEY = "trackhub.session-user";
-
 const defaultUser: SessionUser = {
   identifier: "admin",
   email: "oicdirector@dict.gov.ph",
@@ -16,30 +14,14 @@ const defaultUser: SessionUser = {
   role: "Policy Owner",
 };
 
+let sessionUser: SessionUser | null = null;
+
 export function setCurrentUser(user: SessionUser): void {
-  try {
-    window.localStorage.setItem(SESSION_USER_KEY, JSON.stringify(user));
-  } catch {
-    // Ignore storage write errors.
-  }
+  sessionUser = user;
 }
 
 export function getCurrentUser(): SessionUser {
-  try {
-    const raw = window.localStorage.getItem(SESSION_USER_KEY);
-    if (!raw) {
-      return defaultUser;
-    }
-
-    const parsed = JSON.parse(raw) as SessionUser;
-    if (!parsed || !parsed.email || !parsed.role) {
-      return defaultUser;
-    }
-
-    return parsed;
-  } catch {
-    return defaultUser;
-  }
+  return sessionUser ?? defaultUser;
 }
 
 export function canManagePolicies(user: SessionUser): boolean {
@@ -47,9 +29,5 @@ export function canManagePolicies(user: SessionUser): boolean {
 }
 
 export function clearCurrentUser(): void {
-  try {
-    window.localStorage.removeItem(SESSION_USER_KEY);
-  } catch {
-    // Ignore storage write errors.
-  }
+  sessionUser = null;
 }
