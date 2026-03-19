@@ -1,6 +1,14 @@
 import { Schema, model } from "mongoose";
 
-const userRoles = ["Admin", "Policy Owner", "Policy Access", "Viewer"] as const;
+const userRoles = [
+  "OIC Director",
+  "Division Chief",
+  "Division Member",
+  "Admin",
+  "Policy Owner",
+  "Policy Access",
+  "Viewer",
+] as const;
 
 // User schema for authentication endpoints.
 const userSchema = new Schema(

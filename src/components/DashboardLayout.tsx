@@ -108,6 +108,12 @@ export default function DashboardLayout() {
                                 key={n.id}
                                 className={`w-full text-left p-3 rounded-lg hover:bg-muted/50 transition-colors flex items-start gap-3 ${!n.read ? "bg-primary/5" : ""}`}
                                 onClick={() => {
+                                  const isAccessRequest = n.changeType.startsWith("ACCESS_REQUEST|");
+                                  if (isAccessRequest) {
+                                    navigate("/dashboard/access-requests");
+                                    return;
+                                  }
+
                                   setNotifications((prev) => {
                                     const next = prev.map((x) => (x.id === n.id ? { ...x, read: true } : x));
                                     saveNotificationsToStorage(next);
@@ -143,7 +149,7 @@ export default function DashboardLayout() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <div className="px-3 py-2">
-                    <p className="text-sm font-medium text-foreground">{currentUser.name}</p>
+                    <p className="text-sm font-medium text-foreground">{currentUser.identifier}</p>
                     <p className="text-xs text-muted-foreground">{currentUser.email}</p>
                   </div>
                   <DropdownMenuSeparator />

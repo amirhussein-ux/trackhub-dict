@@ -6,6 +6,7 @@ import { CheckCircle, Circle, Clock, ArrowRight, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getStatusBadgeVariant, divisions, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
+import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { subscribeToDataUpdates } from "@/lib/records-storage";
 
@@ -38,7 +39,7 @@ export default function PolicyTimelinePage() {
     if (filterDivision !== "all" && p.division !== filterDivision) return false;
     if (filterStatus !== "all" && p.status !== filterStatus) return false;
     if (filterType !== "all" && p.type !== filterType) return false;
-    if (search && !p.title.toLowerCase().includes(search.toLowerCase()) && !p.policyNumber.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !getDisplayedPolicyTitle(p).toLowerCase().includes(search.toLowerCase()) && !p.policyNumber.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
 
@@ -104,7 +105,7 @@ export default function PolicyTimelinePage() {
                       <span className="text-xs text-muted-foreground">· {policy.division}</span>
                     </div>
                     <CardTitle className="text-sm font-semibold group-hover:text-primary transition-colors">
-                      {policy.title}
+                      {getDisplayedPolicyTitle(policy)}
                     </CardTitle>
                   </div>
                   <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity mt-1" />

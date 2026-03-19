@@ -13,6 +13,14 @@ import { Archive, ChevronLeft, ChevronRight, ExternalLink, Info, MoreVertical, P
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { divisions, type Division, type Policy, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
+import {
+  canArchivePolicyRecord,
+  canCreatePolicyRecord,
+  canEditPolicyRecord,
+  canGrantPolicyAccess,
+  canViewPolicyRecord,
+} from "@/lib/access-control";
+import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { createPolicyInApi, loadPoliciesFromStorage, updatePolicyInApi } from "@/lib/policy-storage";
 import {
   appendActivity,
@@ -57,6 +65,7 @@ const divisionMembers: Record<Division, { name: string; email: string }[]> = {
 type PolicyFormState = {
   policyNumber: string;
   title: string;
+  type: PolicyType;
   division: Division;
   status: PolicyStatus;
   remarksComment: string;
@@ -66,6 +75,7 @@ type PolicyFormState = {
 const defaultFormState: PolicyFormState = {
   policyNumber: "",
   title: "",
+  type: TYPES[0],
   division: "PRAD",
   status: "On Hold",
   remarksComment: "",
@@ -144,7 +154,7 @@ export default function PolicyTrackerPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const currentUser = getCurrentUser();
-  const canCreatePolicy = canManagePolicies(currentUser);
+  const canCreatePolicy = canCreatePolicyRecord(currentUser) && canManagePolicies(currentUser);
   const [policies, setPolicies] = useState<ManagedPolicy[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -167,14 +177,15 @@ export default function PolicyTrackerPage() {
 
   const filtered = useMemo(() => {
     return policies.filter((p) => {
+      if (!canViewPolicyRecord(currentUser, p)) return false;
       if (p.archived) return false;
-      const matchSearch = !search || p.title.toLowerCase().includes(search.toLowerCase()) || p.policyNumber.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = !search || getDisplayedPolicyTitle(p).toLowerCase().includes(search.toLowerCase()) || p.policyNumber.toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || p.status === statusFilter;
       const matchDivision = divisionFilter === "all" || p.division === divisionFilter;
       const matchType = typeFilter === "all" || p.type === typeFilter;
       return matchSearch && matchStatus && matchDivision && matchType;
     });
-  }, [policies, search, statusFilter, divisionFilter, typeFilter]);
+  }, [policies, search, statusFilter, divisionFilter, typeFilter, currentUser]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -183,7 +194,7 @@ export default function PolicyTrackerPage() {
 
   useEffect(() => {
     // Trigger initial hydration and subscribe so state stays in sync with the API cache.
-    loadPoliciesFromStorage();
+    setPolicies(loadPoliciesFromStorage().map((policy) => policy as ManagedPolicy));
     return subscribeToDataUpdates(() => {
       setPolicies(
         loadPoliciesFromStorage().map((policy) => (policy as ManagedPolicy))
@@ -195,17 +206,30 @@ export default function PolicyTrackerPage() {
     return Array.from(new Set([...(policy.accessEmails ?? []), currentUser.email, ...extraRecipients]));
   };
 
+  const getAccessRequestRecipients = (policy: ManagedPolicy): string[] => {
+    const divisionRecipients = divisionMembers[policy.division].map((member) => member.email);
+    const recipients = Array.from(new Set([...(policy.accessEmails ?? []), ...divisionRecipients]))
+      .filter((email) => email.toLowerCase() !== currentUser.email.toLowerCase());
+
+    // Keep at least one approver target in case policy access list is empty.
+    if (recipients.length === 0) {
+      return ["oicdirector@dict.gov.ph"];
+    }
+
+    return recipients;
+  };
+
   const registerPolicyAction = (policy: ManagedPolicy, action: string, type: "create" | "update" | "upload" | "download" | "status", recipients?: string[]) => {
     appendActivity({
-      user: currentUser.name,
+      user: currentUser.identifier,
       action,
-      policyTitle: policy.title,
+      policyTitle: getDisplayedPolicyTitle(policy),
       type,
     });
 
     appendPolicyNotifications({
       policyId: policy.id,
-      policyTitle: policy.title,
+      policyTitle: getDisplayedPolicyTitle(policy),
       changeType: action,
       recipients: recipients ?? getNotificationRecipients(policy),
     });
@@ -221,10 +245,16 @@ export default function PolicyTrackerPage() {
   };
 
   const openEdit = (policy: ManagedPolicy) => {
+    if (!canEditPolicyRecord(currentUser, policy)) {
+      toast({ title: "Access denied", description: "You do not have permission to edit this policy.", variant: "destructive" });
+      return;
+    }
+
     setSelectedPolicyId(policy.id);
     setEditForm({
       policyNumber: policy.policyNumber,
       title: policy.title,
+      type: policy.type,
       division: policy.division,
       status: policy.status,
       remarksComment: "",
@@ -235,6 +265,11 @@ export default function PolicyTrackerPage() {
   };
 
   const openShare = (policy: ManagedPolicy) => {
+    if (!canGrantPolicyAccess(currentUser, policy)) {
+      toast({ title: "Access denied", description: "Only the policy owner or OIC Director can grant access.", variant: "destructive" });
+      return;
+    }
+
     setSelectedPolicyId(policy.id);
     setShareDivision(policy.division);
     setShareMember("");
@@ -242,16 +277,56 @@ export default function PolicyTrackerPage() {
     setShareOpen(true);
   };
 
+  const handleRequestAccess = (policy: ManagedPolicy) => {
+    if (canEditPolicyRecord(currentUser, policy)) {
+      toast({ title: "Access already granted", description: "You already have edit access to this policy." });
+      return;
+    }
+
+    const recipients = getAccessRequestRecipients(policy);
+    const action = `Requested access for policy ${policy.policyNumber}`;
+
+    appendActivity({
+      user: currentUser.identifier,
+      action,
+      policyTitle: getDisplayedPolicyTitle(policy),
+      type: "update",
+    });
+
+    appendPolicyNotifications({
+      policyId: policy.id,
+      policyTitle: getDisplayedPolicyTitle(policy),
+      changeType: `ACCESS_REQUEST|${encodeURIComponent(currentUser.identifier)}|${encodeURIComponent(currentUser.email)}`,
+      recipients,
+    });
+
+    toast({
+      title: "Access request sent",
+      description: "Your request was sent to the concerned approvers.",
+    });
+  };
+
   const openArchive = (policy: ManagedPolicy) => {
+    if (!canArchivePolicyRecord(currentUser, policy)) {
+      toast({ title: "Access denied", description: "You do not have permission to archive this policy.", variant: "destructive" });
+      return;
+    }
+
     setSelectedPolicyId(policy.id);
     setArchiveOpen(true);
   };
 
   const startStatusChange = (policy: ManagedPolicy, nextStatus: PolicyStatus) => {
+    if (!canEditPolicyRecord(currentUser, policy)) {
+      toast({ title: "Access denied", description: "You do not have permission to change this policy status.", variant: "destructive" });
+      return;
+    }
+
     setSelectedPolicyId(policy.id);
     setEditForm({
       policyNumber: policy.policyNumber,
       title: policy.title,
+      type: policy.type,
       division: policy.division,
       status: nextStatus,
       remarksComment: "",
@@ -269,6 +344,11 @@ export default function PolicyTrackerPage() {
 
   const handleEditSave = async () => {
     if (!selectedPolicy || !editForm.title.trim() || !editForm.policyNumber.trim()) {
+      return;
+    }
+
+    if (!canEditPolicyRecord(currentUser, selectedPolicy)) {
+      toast({ title: "Access denied", description: "You do not have permission to edit this policy.", variant: "destructive" });
       return;
     }
 
@@ -313,7 +393,7 @@ export default function PolicyTrackerPage() {
       referenceLink: editForm.referenceLink.trim() || undefined,
       lastUpdated: now,
       remarks: nextRemarks,
-      lastEditedBy: currentUser.name,
+      lastEditedBy: currentUser.identifier,
       accessEmails: Array.from(new Set([...(selectedPolicy.accessEmails ?? []), ...divisionMembers[editForm.division].map((member) => member.email)])),
     };
     setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? editedPolicy : p)));
@@ -339,12 +419,12 @@ export default function PolicyTrackerPage() {
             type: docType,
             size: formatBytesToReadableSize(editVersionFile.size),
             version: currentVersion + 1,
-            uploadedBy: currentUser.name,
+            uploadedBy: currentUser.identifier,
             uploadedDate: now,
             division: editForm.division,
             category: inferPolicyType(editForm.policyNumber.trim()),
             status: "Active",
-            owner: currentUser.name,
+            owner: currentUser.identifier,
             lastEdited: now,
             fileDataUrl: dataUrl,
             fileMimeType: mimeType,
@@ -428,13 +508,13 @@ export default function PolicyTrackerPage() {
       status: initialStatus,
       remarks: initialRemarkEntry || undefined,
       referenceLink: newPolicyForm.referenceLink.trim() || undefined,
-      type: inferPolicyType(newPolicyForm.policyNumber.trim()),
+      type: newPolicyForm.type,
       dateSigned: "",
-      createdBy: currentUser.name,
+      createdBy: currentUser.identifier,
       createdDate: now,
       lastUpdated: now,
-      uploadedBy: currentUser.name,
-      lastEditedBy: currentUser.name,
+      uploadedBy: currentUser.identifier,
+      lastEditedBy: currentUser.identifier,
       accessEmails: Array.from(new Set([currentUser.email, ...divisionMembers[newPolicyForm.division].map((member) => member.email)])),
       archived: false,
     };
@@ -465,12 +545,12 @@ export default function PolicyTrackerPage() {
           type: getDocumentTypeFromFilename(file.name) as RepositoryDocument["type"],
           size: formatBytesToReadableSize(file.size),
           version: index + 1,
-          uploadedBy: currentUser.name,
+          uploadedBy: currentUser.identifier,
           uploadedDate: now,
           division: savedPolicy.division,
           category: savedPolicy.type,
           status: "Active",
-          owner: currentUser.name,
+          owner: currentUser.identifier,
           lastEdited: now,
           fileDataUrl: dataUrl,
           fileMimeType: mimeType,
@@ -505,6 +585,11 @@ export default function PolicyTrackerPage() {
       return;
     }
 
+    if (!canGrantPolicyAccess(currentUser, selectedPolicy)) {
+      toast({ title: "Access denied", description: "Only the policy owner or OIC Director can grant access.", variant: "destructive" });
+      return;
+    }
+
     const memberRecord = divisionMembers[shareDivision].find((member) => member.email === shareMember);
     if (!memberRecord) {
       return;
@@ -534,6 +619,11 @@ export default function PolicyTrackerPage() {
 
   const handleArchiveConfirm = () => {
     if (!selectedPolicy) {
+      return;
+    }
+
+    if (!canArchivePolicyRecord(currentUser, selectedPolicy)) {
+      toast({ title: "Access denied", description: "You do not have permission to archive this policy.", variant: "destructive" });
       return;
     }
 
@@ -641,12 +731,16 @@ export default function PolicyTrackerPage() {
                 <TableRow key={p.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => navigate(`/dashboard/policies/${p.id}`)}>
                   <TableCell className="font-medium text-primary">{p.policyNumber}</TableCell>
                   <TableCell className="max-w-[250px]">
-                    <span className="truncate block">{p.title}</span>
+                    <span className="truncate block">{getDisplayedPolicyTitle(p)}</span>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.division}</TableCell>
                   <TableCell>
                     <div onClick={(event) => event.stopPropagation()}>
-                      <Select value={p.status} onValueChange={(value: PolicyStatus) => startStatusChange(p, value)}>
+                      <Select
+                        value={p.status}
+                        onValueChange={(value: PolicyStatus) => startStatusChange(p, value)}
+                        disabled={!canEditPolicyRecord(currentUser, p)}
+                      >
                         <SelectTrigger className={`h-9 w-[160px] ${getStatusSelectClass(p.status)}`}>
                           <SelectValue placeholder="Select status" />
                         </SelectTrigger>
@@ -684,13 +778,16 @@ export default function PolicyTrackerPage() {
                           <DropdownMenuItem onClick={() => openDetails(p)}>
                             <Info className="h-4 w-4 mr-2" /> Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openEdit(p)}>
+                          <DropdownMenuItem onClick={() => openEdit(p)} disabled={!canEditPolicyRecord(currentUser, p)}>
                             <Pencil className="h-4 w-4 mr-2" /> Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openShare(p)}>
+                          <DropdownMenuItem onClick={() => openShare(p)} disabled={!canGrantPolicyAccess(currentUser, p)}>
                             <Share2 className="h-4 w-4 mr-2" /> Share
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openArchive(p)} className="text-destructive focus:text-destructive">
+                          <DropdownMenuItem onClick={() => handleRequestAccess(p)} disabled={canEditPolicyRecord(currentUser, p)}>
+                            <Share2 className="h-4 w-4 mr-2" /> Request Access
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openArchive(p)} disabled={!canArchivePolicyRecord(currentUser, p)} className="text-destructive focus:text-destructive">
                             <Archive className="h-4 w-4 mr-2" /> Archive
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -869,11 +966,35 @@ export default function PolicyTrackerPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="new-policy-number">Policy ID No.</Label>
-              <Input id="new-policy-number" value={newPolicyForm.policyNumber} onChange={(event) => setNewPolicyForm((current) => ({ ...current, policyNumber: event.target.value }))} />
+              <Input
+                id="new-policy-number"
+                value={newPolicyForm.policyNumber}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setNewPolicyForm((current) => ({
+                    ...current,
+                    policyNumber: value,
+                    type: inferPolicyType(value.trim()),
+                  }));
+                }}
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="new-policy-title">Policy Title</Label>
               <Input id="new-policy-title" value={newPolicyForm.title} onChange={(event) => setNewPolicyForm((current) => ({ ...current, title: event.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Policy Type</Label>
+              <Select value={newPolicyForm.type} onValueChange={(value: PolicyType) => setNewPolicyForm((current) => ({ ...current, type: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select policy type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>{type}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Responsible Division</Label>

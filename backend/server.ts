@@ -1,6 +1,8 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import fs from "fs";
+import path from "path";
 import connectDB from "./config/db";
 import errorHandler from "./middleware/errorHandler";
 import notFound from "./middleware/notFound";
@@ -12,7 +14,14 @@ import notificationRoutes from "./routes/notificationRoutes";
 import policyRoutes from "./routes/policyRoutes";
 import seedDefaultUsers from "./utils/seedDefaultUsers";
 
-dotenv.config();
+const envCandidates = [
+  path.resolve(__dirname, "../.env"),
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(__dirname, ".env"),
+];
+const envPath = envCandidates.find((candidate) => fs.existsSync(candidate));
+
+dotenv.config(envPath ? { path: envPath } : undefined);
 
 const app = express();
 

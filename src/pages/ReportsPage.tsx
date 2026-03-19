@@ -19,9 +19,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { canArchiveFromReports, canViewReports } from "@/lib/access-control";
+import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { type Division, type Policy, type PolicyStatus } from "../lib/mock-data";
 import { loadPoliciesFromStorage, savePoliciesToStorage } from "../lib/policy-storage";
-import { subscribeToDataUpdates } from "../lib/records-storage";
+import { appendActivity, appendPolicyNotifications, subscribeToDataUpdates } from "../lib/records-storage";
+import { getCurrentUser } from "@/lib/user-session";
 
 const statusColors: Record<PolicyStatus, string> = {
   Approved: "hsl(142, 71%, 45%)",
@@ -106,6 +109,7 @@ function renderPieLabel({
 
 export default function ReportsPage() {
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
   const [policies, setPolicies] = useState<Policy[]>(() => loadPoliciesFromStorage());
 
   useEffect(() => {
@@ -142,7 +146,7 @@ export default function ReportsPage() {
       const matchesSearch =
         needle.length === 0 ||
         policy.id.toLowerCase().includes(needle) ||
-        policy.title.toLowerCase().includes(needle) ||
+        getDisplayedPolicyTitle(policy).toLowerCase().includes(needle) ||
         policy.division.toLowerCase().includes(needle) ||
         policy.status.toLowerCase().includes(needle);
       return matchesDivision && matchesStatus && matchesYear && matchesSearch;
@@ -265,12 +269,35 @@ export default function ReportsPage() {
   };
 
   const handleArchive = (id: string) => {
+    if (!canArchiveFromReports(currentUser)) {
+      return;
+    }
+
+    const target = policies.find((policy) => policy.id === id);
+    if (!target) {
+      return;
+    }
+
     const nextPolicies: Policy[] = policies.map((policy) => (
       policy.id === id
         ? { ...policy, status: "On Hold", lastUpdated: new Date().toISOString().slice(0, 10) }
         : policy
     ));
     savePoliciesToStorage(nextPolicies);
+
+    appendActivity({
+      user: currentUser.identifier,
+      action: "Archived policy from Reports page",
+      policyTitle: getDisplayedPolicyTitle(target),
+      type: "status",
+    });
+
+    appendPolicyNotifications({
+      policyId: target.id,
+      policyTitle: getDisplayedPolicyTitle(target),
+      changeType: "Archived policy from Reports page",
+      recipients: Array.from(new Set([...(target.accessEmails ?? []), currentUser.email])),
+    });
   };
 
   const exportStatusReportCsv = () => {
@@ -286,6 +313,22 @@ export default function ReportsPage() {
   const exportStatusReportPdf = () => {
     window.print();
   };
+
+  if (!canViewReports(currentUser)) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Card className="shadow-card border-border/50">
+          <CardHeader><CardTitle>Access Restricted</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              Reports are available only to OIC Director and Division Chief roles.
+            </p>
+            <Button variant="outline" onClick={() => navigate("/dashboard")}>Return to Dashboard</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -432,7 +475,7 @@ export default function ReportsPage() {
                 {pagedPolicies.map((policy) => (
                   <tr key={policy.id} className="border-b border-border/60">
                     <td className="py-2 pr-3 font-medium">{policy.id}</td>
-                    <td className="py-2 pr-3">{policy.title}</td>
+                    <td className="py-2 pr-3">{getDisplayedPolicyTitle(policy)}</td>
                     <td className="py-2 pr-3">{policy.division}</td>
                     <td className="py-2 pr-3"><Badge variant="outline">{policy.status}</Badge></td>
                     <td className="py-2 pr-3">{formatDate(policy.createdDate)}</td>
@@ -440,7 +483,9 @@ export default function ReportsPage() {
                     <td className="py-2">
                       <div className="flex items-center gap-2">
                         <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/policies/${policy.id}`)}>View</Button>
-                        <Button size="sm" variant="outline" onClick={() => handleArchive(policy.id)}>Archive</Button>
+                        {canArchiveFromReports(currentUser) && (
+                          <Button size="sm" variant="outline" onClick={() => handleArchive(policy.id)}>Archive</Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -453,12 +498,14 @@ export default function ReportsPage() {
             {pagedPolicies.map((policy) => (
               <div key={policy.id} className="rounded-lg border border-border p-3 space-y-2">
                 <p className="font-semibold text-sm">{policy.id}</p>
-                <p className="text-sm">{policy.title}</p>
+                <p className="text-sm">{getDisplayedPolicyTitle(policy)}</p>
                 <p className="text-xs text-muted-foreground">{policy.division} • {policy.status}</p>
                 <p className="text-xs text-muted-foreground">Created: {formatDate(policy.createdDate)} • Updated: {formatDate(policy.lastUpdated)}</p>
                 <div className="flex gap-2 pt-1">
                   <Button size="sm" variant="outline" onClick={() => navigate(`/dashboard/policies/${policy.id}`)}>View</Button>
-                  <Button size="sm" variant="outline" onClick={() => handleArchive(policy.id)}>Archive</Button>
+                  {canArchiveFromReports(currentUser) && (
+                    <Button size="sm" variant="outline" onClick={() => handleArchive(policy.id)}>Archive</Button>
+                  )}
                 </div>
               </div>
             ))}

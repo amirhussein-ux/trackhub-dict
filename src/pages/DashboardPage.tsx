@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { loadActivitiesFromStorage, subscribeToDataUpdates } from "@/lib/records-storage";
+import { getCurrentUser } from "@/lib/user-session";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
 
 function getGreeting() {
@@ -16,6 +17,7 @@ function getGreeting() {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  const currentUser = getCurrentUser();
   const [policies, setPolicies] = useState(() => loadPoliciesFromStorage());
   const [activities, setActivities] = useState(() => loadActivitiesFromStorage());
 
@@ -80,7 +82,7 @@ export default function DashboardPage() {
       {/* Welcome Banner */}
       <Card className="hero-gradient text-primary-foreground shadow-lg border-0">
         <CardContent className="p-6">
-          <h1 className="text-xl font-bold">{getGreeting()}, OIC Director Sanchez</h1>
+          <h1 className="text-xl font-bold">{getGreeting()}, {currentUser.identifier}</h1>
           <p className="text-sm text-primary-foreground/80 mt-1">
             Welcome back to TrackHub — your centralized ICT policy monitoring dashboard.
           </p>

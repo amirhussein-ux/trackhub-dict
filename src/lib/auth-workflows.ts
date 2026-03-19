@@ -4,7 +4,7 @@ type UserRecord = {
   identifier: string;
   email: string;
   name: string;
-  role: "Admin" | "Policy Owner" | "Policy Access" | "Viewer";
+  role: "OIC Director" | "Division Chief" | "Division Member" | "Admin" | "Policy Owner" | "Policy Access" | "Viewer";
 };
 
 export type AuthenticatedUser = UserRecord;

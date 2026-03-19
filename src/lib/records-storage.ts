@@ -75,6 +75,7 @@ const toNotification = (input: NotificationDto): Notification => ({
   changeType: input.changeType,
   timestamp: input.timestamp,
   read: input.read,
+  recipientEmail: input.recipientEmail,
 });
 
 const toDocumentPayload = (document: RepositoryDocument): Omit<RepositoryDocument, "id"> => {
@@ -92,6 +93,30 @@ const toNotificationPayload = (notification: Notification): Omit<Notification, "
   return payload;
 };
 
+function mergePreviewFields(current: RepositoryDocument[], fetched: RepositoryDocument[]): RepositoryDocument[] {
+  const currentById = new Map(current.filter((doc) => doc.id).map((doc) => [doc.id, doc]));
+  const currentByCompositeKey = new Map(current.map((doc) => [`${doc.policyNumber}::${doc.name}`, doc]));
+
+  return fetched.map((doc) => {
+    const match = (doc.id ? currentById.get(doc.id) : undefined) ?? currentByCompositeKey.get(`${doc.policyNumber}::${doc.name}`);
+
+    if (!doc.fileDataUrl && match?.fileDataUrl) {
+      return {
+        ...doc,
+        fileDataUrl: match.fileDataUrl,
+        fileMimeType: match.fileMimeType,
+      };
+    }
+
+    return doc;
+  });
+}
+
+async function refetchDocumentsFromApi(current: RepositoryDocument[] = documentCache): Promise<RepositoryDocument[]> {
+  const fetched = (await apiRequest<DocumentDto[]>("/documents")).map(toDocument);
+  return mergePreviewFields(current, fetched);
+}
+
 async function hydrateAllData(): Promise<void> {
   if (isHydratingData) {
     return;
@@ -105,7 +130,7 @@ async function hydrateAllData(): Promise<void> {
       apiRequest<NotificationDto[]>("/notifications"),
     ]);
 
-    documentCache = documents.map(toDocument);
+    documentCache = mergePreviewFields(documentCache, documents.map(toDocument));
     activityCache = activities.map(toActivity);
     notificationCache = notifications.map(toNotification);
     isDataHydrated = true;
@@ -149,9 +174,8 @@ export function loadDocumentsFromStorage(): RepositoryDocument[] {
 export function saveDocumentsToStorage(documents: RepositoryDocument[]): void {
   void (async () => {
     try {
-      const current = isDataHydrated ? documentCache : (await apiRequest<DocumentDto[]>("/documents")).map(toDocument);
+      const current = isDataHydrated ? documentCache : await refetchDocumentsFromApi();
       const currentById = new Map(current.map((doc) => [doc.id, doc]));
-      const nextById = new Map(documents.filter((doc) => doc.id).map((doc) => [doc.id, doc]));
 
       for (const doc of documents) {
         if (doc.id && currentById.has(doc.id)) {
@@ -168,13 +192,7 @@ export function saveDocumentsToStorage(documents: RepositoryDocument[]): void {
         });
       }
 
-      for (const doc of current) {
-        if (!nextById.has(doc.id)) {
-          await apiRequest(`/documents/${doc.id}`, { method: "DELETE" });
-        }
-      }
-
-      documentCache = (await apiRequest<DocumentDto[]>("/documents")).map(toDocument);
+      documentCache = await refetchDocumentsFromApi(current);
       isDataHydrated = true;
       emitDataUpdate();
     } catch {

@@ -45,10 +45,17 @@ import {
   appendPolicyNotifications,
   loadDocumentsFromStorage,
   saveDocumentsToStorage,
+  subscribeToDataUpdates,
   type RepositoryDocument,
 } from "@/lib/records-storage";
 import { loadPoliciesFromStorage, savePoliciesToStorage } from "@/lib/policy-storage";
 import { getCurrentUser } from "@/lib/user-session";
+import {
+  canArchiveDocumentRecord,
+  canEditDocumentRecord,
+  canGrantDocumentAccess,
+  canViewDocumentRecord,
+} from "@/lib/access-control";
 
 const CATEGORIES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 
@@ -135,8 +142,12 @@ export default function DocumentRepositoryPage() {
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
-    saveDocumentsToStorage(documents);
-  }, [documents]);
+    // Trigger hydration and keep local UI state synced with shared cache updates.
+    setDocuments(loadDocumentsFromStorage());
+    return subscribeToDataUpdates(() => {
+      setDocuments(loadDocumentsFromStorage());
+    });
+  }, []);
 
   const downloadDocument = (doc: RepositoryDocument) => {
     if (!doc.fileDataUrl) {
@@ -235,11 +246,28 @@ export default function DocumentRepositoryPage() {
   };
 
   const updateDocument = (docId: string, updater: (doc: RepositoryDocument) => RepositoryDocument) => {
-    setDocuments((current) => current.map((doc) => (doc.id === docId ? updater(doc) : doc)));
+    setDocuments((current) => {
+      const next = current.map((doc) => (doc.id === docId ? updater(doc) : doc));
+      saveDocumentsToStorage(next);
+      return next;
+    });
   };
 
+  const policyOwnerByDocKey = (() => {
+    const map = new Map<string, string>();
+    for (const policy of loadPoliciesFromStorage()) {
+      map.set(`${policy.id}::${policy.policyNumber}`, policy.createdBy ?? "");
+    }
+    return map;
+  })();
+
+  const visibleDocuments = useMemo(
+    () => documents.filter((doc) => canViewDocumentRecord(currentUser, doc)),
+    [documents, currentUser]
+  );
+
   const filtered = useMemo(() => {
-    return documents.filter((doc) => {
+    return visibleDocuments.filter((doc) => {
       if (doc.status === "Archived") return false;
       if (search && !doc.name.toLowerCase().includes(search.toLowerCase()) && !doc.policyTitle.toLowerCase().includes(search.toLowerCase())) return false;
       if (filterType !== "all" && doc.type !== filterType) return false;
@@ -250,13 +278,13 @@ export default function DocumentRepositoryPage() {
       if (quickFilter === "other" && ["pdf", "docx"].includes(doc.type)) return false;
       return true;
     });
-  }, [documents, filterType, filterDivision, filterCategory, quickFilter, search]);
+  }, [visibleDocuments, filterType, filterDivision, filterCategory, quickFilter, search]);
 
   const stats = {
-    total: documents.filter((d) => d.status !== "Archived").length,
-    pdf: documents.filter((d) => d.type === "pdf" && d.status !== "Archived").length,
-    docx: documents.filter((d) => d.type === "docx" && d.status !== "Archived").length,
-    other: documents.filter((d) => !["pdf", "docx"].includes(d.type) && d.status !== "Archived").length,
+    total: visibleDocuments.filter((d) => d.status !== "Archived").length,
+    pdf: visibleDocuments.filter((d) => d.type === "pdf" && d.status !== "Archived").length,
+    docx: visibleDocuments.filter((d) => d.type === "docx" && d.status !== "Archived").length,
+    other: visibleDocuments.filter((d) => !["pdf", "docx"].includes(d.type) && d.status !== "Archived").length,
   };
 
   const updatePolicyArchiveState = (policyId: string, policyNumber: string, shouldArchive: boolean) => {
@@ -272,7 +300,7 @@ export default function DocumentRepositoryPage() {
         archived: shouldArchive,
         status: shouldArchive ? "On Hold" : policy.status,
         lastUpdated: now,
-        lastEditedBy: currentUser.name,
+        lastEditedBy: currentUser.identifier,
         remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${now} | ${shouldArchive ? "Archived from repository" : "Returned to active repository"}`,
       };
     });
@@ -285,6 +313,11 @@ export default function DocumentRepositoryPage() {
       return;
     }
 
+    if (!canEditDocumentRecord(currentUser, renameDoc)) {
+      toast({ title: "Access denied", description: "You do not have permission to rename this document.", variant: "destructive" });
+      return;
+    }
+
     updateDocument(renameDoc.id, (doc) => ({
       ...doc,
       name: renameValue.trim(),
@@ -292,7 +325,7 @@ export default function DocumentRepositoryPage() {
       remarks: `${today} | Renamed document to ${renameValue.trim()}`,
     }));
 
-    appendActivity({ user: currentUser.name, action: "Renamed repository document", policyTitle: renameDoc.policyTitle, type: "update" });
+    appendActivity({ user: currentUser.identifier, action: "Renamed repository document", policyTitle: renameDoc.policyTitle, type: "update" });
     appendPolicyNotifications({
       policyId: renameDoc.policyId,
       policyTitle: renameDoc.policyTitle,
@@ -309,6 +342,12 @@ export default function DocumentRepositoryPage() {
       return;
     }
 
+    const ownerName = policyOwnerByDocKey.get(`${shareDoc.policyId}::${shareDoc.policyNumber}`) ?? "";
+    if (!canGrantDocumentAccess(currentUser, ownerName)) {
+      toast({ title: "Access denied", description: "Only the policy owner or OIC Director can grant document access.", variant: "destructive" });
+      return;
+    }
+
     const member = divisionMembers[shareDivision].find((entry) => entry.email === shareMember);
     if (!member) {
       return;
@@ -321,7 +360,7 @@ export default function DocumentRepositoryPage() {
       remarks: `${today} | ${shareNote.trim() || `Shared access with ${member.name} (${shareDivision})`}`,
     }));
 
-    appendActivity({ user: currentUser.name, action: `Granted access to ${member.name}`, policyTitle: shareDoc.policyTitle, type: "update" });
+    appendActivity({ user: currentUser.identifier, action: `Granted access to ${member.name}`, policyTitle: shareDoc.policyTitle, type: "update" });
     appendPolicyNotifications({
       policyId: shareDoc.policyId,
       policyTitle: shareDoc.policyTitle,
@@ -338,6 +377,11 @@ export default function DocumentRepositoryPage() {
       return;
     }
 
+    if (!canArchiveDocumentRecord(currentUser, archiveDoc)) {
+      toast({ title: "Access denied", description: "You do not have permission to archive this document.", variant: "destructive" });
+      return;
+    }
+
     updateDocument(archiveDoc.id, (doc) => ({
       ...doc,
       status: "Archived",
@@ -347,7 +391,7 @@ export default function DocumentRepositoryPage() {
 
     updatePolicyArchiveState(archiveDoc.policyId, archiveDoc.policyNumber, true);
 
-    appendActivity({ user: currentUser.name, action: "Archived repository document", policyTitle: archiveDoc.policyTitle, type: "status" });
+    appendActivity({ user: currentUser.identifier, action: "Archived repository document", policyTitle: archiveDoc.policyTitle, type: "status" });
     appendPolicyNotifications({
       policyId: archiveDoc.policyId,
       policyTitle: archiveDoc.policyTitle,
@@ -368,9 +412,14 @@ export default function DocumentRepositoryPage() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => setDetailsDoc(doc)}><Info className="h-4 w-4 mr-2" /> Details</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openRename(doc)}><Pencil className="h-4 w-4 mr-2" /> Rename</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => openShare(doc)}><Share2 className="h-4 w-4 mr-2" /> Share</DropdownMenuItem>
-        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setArchiveDoc(doc)}>
+        <DropdownMenuItem onClick={() => openRename(doc)} disabled={!canEditDocumentRecord(currentUser, doc)}><Pencil className="h-4 w-4 mr-2" /> Rename</DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => openShare(doc)}
+          disabled={!canGrantDocumentAccess(currentUser, policyOwnerByDocKey.get(`${doc.policyId}::${doc.policyNumber}`) ?? "")}
+        >
+          <Share2 className="h-4 w-4 mr-2" /> Share
+        </DropdownMenuItem>
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setArchiveDoc(doc)} disabled={!canArchiveDocumentRecord(currentUser, doc)}>
           <Archive className="h-4 w-4 mr-2" /> Archive
         </DropdownMenuItem>
       </DropdownMenuContent>

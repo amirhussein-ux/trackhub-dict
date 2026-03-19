@@ -48,6 +48,7 @@ export interface Notification {
   changeType: string;
   timestamp: string;
   read: boolean;
+  recipientEmail?: string;
 }
 
 // Policy records are intentionally empty to avoid seeding mock policy data.

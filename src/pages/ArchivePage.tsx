@@ -36,7 +36,7 @@ export default function ArchivePage() {
         ...policy,
         archived: false,
         lastUpdated: today,
-        lastEditedBy: currentUser.name,
+        lastEditedBy: currentUser.identifier,
         remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${note}`,
       };
     });
@@ -50,7 +50,7 @@ export default function ArchivePage() {
         ...doc,
         status: "Active" as const,
         lastEdited: today,
-        owner: currentUser.name,
+        owner: currentUser.identifier,
         remarks: `${today} | Restored with policy ${policyNumber}`,
       };
     });

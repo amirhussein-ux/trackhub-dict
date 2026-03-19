@@ -10,13 +10,13 @@ import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { loadActivitiesFromStorage, loadDocumentsFromStorage, subscribeToDataUpdates } from "@/lib/records-storage";
 
 const timelineSteps: { label: string; key: PolicyStatus }[] = [
-  { label: "Approved", key: "Approved" },
-  { label: "Under Review", key: "Under Review" },
-  { label: "On Progress", key: "On Progress" },
   { label: "On Hold", key: "On Hold" },
+  { label: "On Progress", key: "On Progress" },
+  { label: "Under Review", key: "Under Review" },
+  { label: "Approved", key: "Approved" },
 ];
 
-const statusOrder: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold"];
+const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved"];
 
 export default function PolicyDetailPage() {
   const { id } = useParams();
@@ -120,7 +120,7 @@ export default function PolicyDetailPage() {
               <div className="space-y-0">
                 {timelineSteps.map((step, i) => {
                   const stepIdx = statusOrder.indexOf(step.key);
-                  const completed = stepIdx <= currentIdx;
+                  const completed = stepIdx <= currentIdx && policy.status !== "On Hold";
                   const isCurrent = step.key === policy.status;
                   return (
                     <div key={i} className="flex items-start gap-4">

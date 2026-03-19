@@ -17,6 +17,7 @@ import DocumentRepositoryPage from "./pages/DocumentRepositoryPage";
 import ReportsPage from "./pages/ReportsPage";
 import ArchivePage from "./pages/ArchivePage";
 import UserManagementPage from "./pages/UserManagementPage";
+import AccessRequestsPage from "./pages/AccessRequestsPage";
 import SettingsPage from "./pages/SettingsPage";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="activity" element={<ActivityLogPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="users" element={<UserManagementPage />} />
+            <Route path="access-requests" element={<AccessRequestsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="profile" element={<PlaceholderPage title="Profile" description="View and edit your profile information." />} />
             <Route path="support" element={<PlaceholderPage title="Contact & Support" description="Get help and submit feedback." />} />

@@ -4,6 +4,7 @@ import {
   Clock,
   FolderOpen,
   Activity,
+  UserCheck,
   BarChart3,
   Users,
   Settings,
@@ -27,7 +28,8 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { getCurrentUser } from "@/lib/user-session";
+import { clearCurrentUser, getCurrentUser } from "@/lib/user-session";
+import { canViewReports, canViewUserManagement } from "@/lib/access-control";
 import dictLogo from "@/assets/Artboard 4.png";
 
 const mainNav = [
@@ -37,6 +39,7 @@ const mainNav = [
   { title: "Documents", url: "/dashboard/documents", icon: FolderOpen },
   { title: "Archive", url: "/dashboard/archive", icon: Archive },
   { title: "Activity Logs", url: "/dashboard/activity", icon: Activity },
+  { title: "Access Requests", url: "/dashboard/access-requests", icon: UserCheck },
 ];
 
 const adminNav = [
@@ -45,17 +48,18 @@ const adminNav = [
   { title: "Settings", url: "/dashboard/settings", icon: Settings },
 ];
 
-const USER_MANAGEMENT_ALLOWED_EMAILS = new Set(["oicdirector@dict.gov.ph", "divisionchief@dict.gov.ph"]);
-
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
-  const canAccessUserManagement = USER_MANAGEMENT_ALLOWED_EMAILS.has(currentUser.email.toLowerCase());
   const isActive = (path: string) => location.pathname === path;
-  const visibleAdminNav = adminNav.filter((item) => item.title !== "User Management" || canAccessUserManagement);
+  const visibleAdminNav = adminNav.filter((item) => {
+    if (item.title === "Reports") return canViewReports(currentUser);
+    if (item.title === "User Management") return canViewUserManagement(currentUser);
+    return true;
+  });
 
   return (
     <Sidebar collapsible="icon" className="border-r-0">
@@ -130,7 +134,10 @@ export function AppSidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 h-9"
-          onClick={() => navigate("/")}
+          onClick={() => {
+            clearCurrentUser();
+            navigate("/");
+          }}
         >
           <LogOut className="h-4 w-4 mr-2 flex-shrink-0" />
           {!collapsed && <span>Log Out</span>}

@@ -19,9 +19,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { divisions, type Division } from "@/lib/mock-data";
 import { getCurrentUser } from "@/lib/user-session";
+import { canDeleteUsers, canEditUsers, canViewUserManagement } from "@/lib/access-control";
+import { appendActivity } from "@/lib/records-storage";
 import { ArrowUpDown, Eye, Pencil, ShieldCheck, Trash2, Users } from "lucide-react";
 
-type UserRole = "Director" | "Division Chief" | "Division Member";
+type UserRole = "OIC Director" | "Division Chief" | "Division Member";
 type UserStatus = "Active" | "Inactive" | "Suspended";
 
 type ManagedUser = {
@@ -40,10 +42,8 @@ type ManagedUser = {
 
 type SortKey = "name" | "email" | "position" | "division" | "role" | "status" | "lastActive";
 
-const USER_MANAGEMENT_ALLOWED_EMAILS = new Set(["oicdirector@dict.gov.ph", "divisionchief@dict.gov.ph"]);
-
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  Director: [
+  "OIC Director": [
     "Full policy lifecycle oversight",
     "Approve user provisioning requests",
     "Access all reports and analytics",
@@ -70,7 +70,7 @@ const MOCK_USERS: ManagedUser[] = [
     phone: "+63 917 100 0001",
     division: "PRAD",
     position: "Officer-in-Charge Director",
-    role: "Director",
+    role: "OIC Director",
     status: "Active",
     dateJoined: "2024-01-12",
     lastActive: "2026-03-12 08:20",
@@ -227,7 +227,7 @@ function initialsOf(name: string): string {
 }
 
 function roleBadgeClass(role: UserRole): string {
-  if (role === "Director") return "bg-primary/10 text-primary border-primary/40";
+  if (role === "OIC Director") return "bg-primary/10 text-primary border-primary/40";
   if (role === "Division Chief") return "bg-accent/10 text-accent border-accent/40";
   return "bg-secondary/10 text-secondary border-secondary/40";
 }
@@ -239,7 +239,7 @@ function statusBadgeClass(status: UserStatus): string {
 }
 
 function avatarClass(role: UserRole): string {
-  if (role === "Director") return "bg-primary/15 text-primary";
+  if (role === "OIC Director") return "bg-primary/15 text-primary";
   if (role === "Division Chief") return "bg-accent/15 text-accent";
   return "bg-secondary/15 text-secondary";
 }
@@ -248,7 +248,9 @@ export default function UserManagementPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const currentUser = getCurrentUser();
-  const canAccess = USER_MANAGEMENT_ALLOWED_EMAILS.has(currentUser.email.toLowerCase());
+  const canAccess = canViewUserManagement(currentUser);
+  const canEdit = canEditUsers(currentUser);
+  const canDelete = canDeleteUsers(currentUser);
 
   const [users, setUsers] = useState<ManagedUser[]>(MOCK_USERS);
   const [search, setSearch] = useState("");
@@ -291,7 +293,7 @@ export default function UserManagementPage() {
   const stats = useMemo(() => {
     const totalUsers = users.length;
     const activeUsers = users.filter((user) => user.status === "Active").length;
-    const administratorCount = users.filter((user) => user.role === "Director" || user.role === "Division Chief").length;
+    const administratorCount = users.filter((user) => user.role === "OIC Director" || user.role === "Division Chief").length;
     const suspendedUsers = users.filter((user) => user.status === "Suspended").length;
 
     return { totalUsers, activeUsers, administratorCount, suspendedUsers };
@@ -323,12 +325,60 @@ export default function UserManagementPage() {
   };
 
   const updateUserStatus = (userId: string, status: UserStatus) => {
+    if (!canEdit) {
+      toast({ title: "Access denied", description: "Only OIC Director can edit status.", variant: "destructive" });
+      return;
+    }
+
+    const target = users.find((user) => user.id === userId);
     setUsers((current) => current.map((user) => (user.id === userId ? { ...user, status } : user)));
+
+    if (target) {
+      appendActivity({
+        user: currentUser.identifier,
+        action: `Updated user status to ${status}`,
+        policyTitle: "User Management",
+        type: "update",
+      });
+    }
+  };
+
+  const saveUserRoleAndStatus = (userId: string, role: UserRole, status: UserStatus) => {
+    if (!canEdit) {
+      toast({ title: "Access denied", description: "Only OIC Director can edit role and status.", variant: "destructive" });
+      return;
+    }
+
+    const target = users.find((user) => user.id === userId);
+    setUsers((current) => current.map((user) => (user.id === userId ? { ...user, role, status } : user)));
+
+    if (target) {
+      appendActivity({
+        user: currentUser.identifier,
+        action: `Updated user role/status for ${target.name}`,
+        policyTitle: "User Management",
+        type: "update",
+      });
+    }
+
+    setEditOpen(false);
+    toast({ title: "User updated", description: "Role and status have been updated." });
   };
 
   const confirmDelete = () => {
     if (!selectedUser) return;
+    if (!canDelete) {
+      toast({ title: "Access denied", description: "Only OIC Director can delete users.", variant: "destructive" });
+      return;
+    }
+
     setUsers((current) => current.filter((user) => user.id !== selectedUser.id));
+    appendActivity({
+      user: currentUser.identifier,
+      action: `Deleted user ${selectedUser.name}`,
+      policyTitle: "User Management",
+      type: "update",
+    });
     setDeleteOpen(false);
     toast({ title: "User deleted", description: `${selectedUser.name} was removed from the list.` });
   };
@@ -403,7 +453,7 @@ export default function UserManagementPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="Director">Director</SelectItem>
+                <SelectItem value="OIC Director">OIC Director</SelectItem>
                 <SelectItem value="Division Chief">Division Chief</SelectItem>
                 <SelectItem value="Division Member">Division Member</SelectItem>
               </SelectContent>
@@ -494,7 +544,7 @@ export default function UserManagementPage() {
                       <Badge variant="outline" className={roleBadgeClass(user.role)}>{user.role}</Badge>
                     </TableCell>
                     <TableCell>
-                      <Select value={user.status} onValueChange={(value: UserStatus) => updateUserStatus(user.id, value)}>
+                      <Select value={user.status} onValueChange={(value: UserStatus) => updateUserStatus(user.id, value)} disabled={!canEdit}>
                         <SelectTrigger className="h-8 w-[128px]">
                           <SelectValue />
                         </SelectTrigger>
@@ -511,10 +561,10 @@ export default function UserManagementPage() {
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openView(user)}>
                           <Eye className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(user)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(user)} disabled={!canEdit}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => openDelete(user)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => openDelete(user)} disabled={!canDelete}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
@@ -577,7 +627,7 @@ export default function UserManagementPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
-            <DialogDescription>Form scaffolding is ready for full user edit workflow integration.</DialogDescription>
+            <DialogDescription>Update user role and status.</DialogDescription>
           </DialogHeader>
           {selectedUser && (
             <div className="space-y-3 text-sm">
@@ -589,6 +639,40 @@ export default function UserManagementPage() {
                 <Label>Email</Label>
                 <Input value={selectedUser.email} readOnly />
               </div>
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select
+                  value={selectedUser.role}
+                  onValueChange={(value: UserRole) => setSelectedUser((current) => (current ? { ...current, role: value } : current))}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="OIC Director">OIC Director</SelectItem>
+                    <SelectItem value="Division Chief">Division Chief</SelectItem>
+                    <SelectItem value="Division Member">Division Member</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Status</Label>
+                <Select
+                  value={selectedUser.status}
+                  onValueChange={(value: UserStatus) => setSelectedUser((current) => (current ? { ...current, status: value } : current))}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Active">Active</SelectItem>
+                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="Suspended">Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
           <DialogFooter>
@@ -596,10 +680,12 @@ export default function UserManagementPage() {
             <Button
               variant="hero"
               onClick={() => {
-                toast({ title: "Edit flow ready", description: "Connect this modal to your user update API or form handler." });
+                if (!selectedUser) return;
+                saveUserRoleAndStatus(selectedUser.id, selectedUser.role, selectedUser.status);
               }}
+              disabled={!canEdit}
             >
-              Save (Placeholder)
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
