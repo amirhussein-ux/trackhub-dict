@@ -10,11 +10,12 @@ import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { subscribeToDataUpdates } from "@/lib/records-storage";
 
-const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved"];
+const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved", "Published"];
 const TYPES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 
 const statusIcons: Record<PolicyStatus, typeof CheckCircle> = {
   "Approved": CheckCircle,
+  "Published": CheckCircle,
   "Under Review": Clock,
   "On Progress": Clock,
   "On Hold": Circle,

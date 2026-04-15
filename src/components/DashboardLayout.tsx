@@ -60,14 +60,13 @@ export default function DashboardLayout() {
   const grouped = groupByDate(notifications);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={false}>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           {/* Top Nav */}
-          <header className="h-14 flex items-center justify-between border-b border-border bg-primary text-primary-foreground px-4 sticky top-0 z-30">
+          <header className="h-14 flex items-center justify-between border-b border-border bg-[hsl(220,20%,97%)] text-primary-foreground px-4 sticky top-0 z-30">
             <div className="flex items-center gap-3">
-              <SidebarTrigger className="text-primary-foreground/80 hover:text-primary-foreground" />
               <div className="relative hidden md:block">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-black" />
                 <Input placeholder="Search by ID, title, division, status..." className="pl-9 h-9 w-80 bg-background/95 text-foreground" />
@@ -78,7 +77,7 @@ export default function DashboardLayout() {
               <Sheet>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-4 w-4" />
+                    <Bell className="h-4 w-4 text-[#12254D]" />
                     {unreadCount > 0 && (
                       <span className="absolute top-1 right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
                         {unreadCount}

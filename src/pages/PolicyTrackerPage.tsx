@@ -19,6 +19,7 @@ import {
   canEditPolicyRecord,
   canGrantPolicyAccess,
   canViewPolicyRecord,
+  canPublishPolicy,
 } from "@/lib/access-control";
 import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { createPolicyInApi, loadPoliciesFromStorage, updatePolicyInApi } from "@/lib/policy-storage";
@@ -33,9 +34,12 @@ import {
   subscribeToDataUpdates,
   type RepositoryDocument,
 } from "@/lib/records-storage";
-import { canManagePolicies, getCurrentUser } from "@/lib/user-session";
+import {
+  canManagePolicies,
+  getCurrentUser,
+} from "@/lib/user-session";
 
-const STATUSES: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved"];
+const STATUSES: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved", "Published"];
 const TYPES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 const PAGE_SIZE = 8;
 
@@ -117,6 +121,8 @@ function getStatusSelectClass(status: PolicyStatus): string {
   switch (status) {
     case "Approved":
       return "border-accent bg-accent text-accent-foreground";
+    case "Published":
+      return "border-green-600 bg-green-600 text-green-foreground";
     case "Under Review":
       return "border-destructive bg-destructive text-destructive-foreground";
     case "On Progress":
@@ -128,18 +134,28 @@ function getStatusSelectClass(status: PolicyStatus): string {
   }
 }
 
-function getAllowedStatusTransitions(current: PolicyStatus): PolicyStatus[] {
+function getAllowedStatusTransitions(current: PolicyStatus, canPublish: boolean): PolicyStatus[] {
   const currentIndex = STATUSES.indexOf(current);
   if (currentIndex < 0) {
     return [current];
   }
 
+  // For Approved status, PPMED can publish
+  if (current === "Approved" && canPublish) {
+    return [current, "Published"];
+  }
+
   const next = STATUSES[currentIndex + 1];
+  // Don't allow moving to Published unless user can publish (and current is Approved)
+  if (next === "Published") {
+    return [current];
+  }
+  
   return next ? [current, next] : [current];
 }
 
-function isValidStatusTransition(from: PolicyStatus, to: PolicyStatus): boolean {
-  return getAllowedStatusTransitions(from).includes(to);
+function isValidStatusTransition(from: PolicyStatus, to: PolicyStatus, canPublish: boolean): boolean {
+  return getAllowedStatusTransitions(from, canPublish).includes(to);
 }
 
 function inferPolicyType(policyNumber: string): PolicyType {
@@ -356,10 +372,12 @@ export default function PolicyTrackerPage() {
     const previousStatus = selectedPolicy.status;
     const statusChanged = editForm.status !== previousStatus;
 
-    if (!isValidStatusTransition(previousStatus, editForm.status)) {
+    if (!isValidStatusTransition(previousStatus, editForm.status, canPublishPolicy(currentUser))) {
       toast({
         title: "Invalid status transition",
-        description: `You can only move from ${previousStatus} to the next status in sequence.`,
+        description: editForm.status === "Published" 
+          ? "Only PPMED members can publish policies from Approved status."
+          : `You can only move from ${previousStatus} to the next status in sequence.`,
         variant: "destructive",
       });
       return;
@@ -746,7 +764,7 @@ export default function PolicyTrackerPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {STATUSES.map((status) => (
-                            <SelectItem key={status} value={status} disabled={!getAllowedStatusTransitions(p.status).includes(status)}>
+                            <SelectItem key={status} value={status} disabled={!getAllowedStatusTransitions(p.status, canPublishPolicy(currentUser)).includes(status)}>
                               {status}
                             </SelectItem>
                           ))}
@@ -879,7 +897,7 @@ export default function PolicyTrackerPage() {
                 <SelectContent>
                     {STATUSES.map((status) => {
                       const currentStatus = selectedPolicy?.status ?? editForm.status;
-                      const allowed = getAllowedStatusTransitions(currentStatus);
+                      const allowed = getAllowedStatusTransitions(currentStatus, canPublishPolicy(currentUser));
                       return (
                         <SelectItem key={status} value={status} disabled={!allowed.includes(status)}>
                           {status}

@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import dictLogo from "@/assets/Artboard 4.png";
+import nippsLogo from "@/assets/NIPPSB(1).png";
+import { motion } from "framer-motion";
+import trackhubBg from "@/assets/trackhubbg.png";
 import {
   getPasswordRuleResult,
   requestPasswordReset,
@@ -17,7 +21,6 @@ type Step = "request" | "verify" | "reset";
 export default function ForgotPasswordPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-
   const [step, setStep] = useState<Step>("request");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -28,6 +31,22 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
 
   const passwordRules = useMemo(() => getPasswordRuleResult(newPassword), [newPassword]);
+
+  const fadeUp = {
+    hidden: { opacity: 0, y: 30 },
+    show: (i = 0) => ({
+      opacity: 1,
+      y: 0,
+      transition: { delay: i * 0.08, duration: 0.6 },
+    }),
+  };
+
+  const floatingParticles = Array.from({ length: 20 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    delay: Math.random() * 2,
+  }));
 
   const handleRequestReset = async (event: FormEvent) => {
     event.preventDefault();
@@ -89,10 +108,67 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl border border-border/50 shadow-card p-8">
-        <h1 className="text-2xl font-bold text-foreground text-center">Forgot Password</h1>
-        <p className="text-sm text-muted-foreground text-center mt-2">
+    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-[#0f172a] via-[#1e293b] to-[#0f172a] p-4 overflow-hidden">
+      <motion.div
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-30"
+        style={{ backgroundImage: `url(${trackhubBg})`}}
+      />
+      {floatingParticles.map((particle) => (
+        <motion.div
+          key={particle.id}
+          className="absolute w-2 h-2 bg-blue-400/30 rounded-full"
+          style={{
+          left: `${particle.x}%`,
+          top: `${particle.y}%`,
+          }}
+          animate={{
+          y: [0, -20, 0],
+          opacity: [0.3, 0.8, 0.3],
+          }}
+          transition={{
+          duration: 3,
+          repeat: Infinity,
+          delay: particle.delay,
+          ease: "easeInOut",
+          }}
+        />
+      ))}
+      <div className="relative z-10 w-full max-w-md flex flex-col items-center">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <img src={dictLogo} alt="DICT Logo" className="h-14 w-auto" />
+            <img src={nippsLogo} alt="NIPPSB Logo" className="h-14 w-14" />
+          </div>
+          <h1
+            className="text-6xl font-extralight text-white tracking-[0.4em]"
+            style={{ fontFamily: "Orbitron, monospace" }}
+          >
+            TRACKHUB
+          </h1>
+          <motion.div
+            variants={fadeUp}
+            className="flex items-center justify-center gap-6 my-6 w-full"
+          >
+            <div className="flex-1 h-px bg-white/30" />
+              <p className="text-lg text-white/80 tracking-widest whitespace-nowrap">
+                NIPPSB Policy Tracker
+              </p>
+              <div className="flex-1 h-px bg-white/30" />
+          </motion.div>
+        </div>
+
+      <div className="
+        relative
+        backdrop-blur-xl
+        bg-white/5
+        border border-white/20
+        shadow-[0_10px_40px_rgba(0,0,0,0.6)]
+        rounded-2xl
+        p-8
+        w-full
+      ">
+        <h1 className="text-2xl font-bold text-white text-center">Forgot Password</h1>
+        <p className="text-sm text-white/70 text-center mt-2">
           {step === "request" && "Enter your DICT webmail to receive reset instructions."}
           {step === "verify" && "Input the reset code sent to your webmail email."}
           {step === "reset" && "Set a new strong password for your account."}
@@ -101,7 +177,9 @@ export default function ForgotPasswordPage() {
         {step === "request" && (
           <form onSubmit={handleRequestReset} className="space-y-5 mt-6">
             <div className="space-y-2">
-              <Label htmlFor="email">Webmail Email</Label>
+              <Label htmlFor="email" className="text-white">
+                Webmail Email
+              </Label>
               <Input
                 id="email"
                 type="email"
@@ -120,7 +198,9 @@ export default function ForgotPasswordPage() {
         {step === "verify" && (
           <form onSubmit={handleVerifyCode} className="space-y-5 mt-6">
             <div className="space-y-2">
-              <Label htmlFor="reset-code">Reset Code</Label>
+              <Label htmlFor="reset-code" className="text-white">
+                Reset Code
+              </Label>
               <Input
                 id="reset-code"
                 type="text"
@@ -133,16 +213,25 @@ export default function ForgotPasswordPage() {
             <Button type="submit" variant="hero" className="w-full h-11" disabled={loading || !code.trim()}>
               {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying...</> : "Verify Code"}
             </Button>
-            <Button type="button" variant="outline" className="w-full" onClick={() => setStep("request")}>
-              Use another email
-            </Button>
+            <p className="text-center text-sm text-white/70">
+              or {" "}
+              <br />
+              <button
+                type="button"
+                onClick={() => setStep("request")}
+                className="text-white hover:underline text-sm"
+              >
+                Use another email
+              </button>
+            </p>
           </form>
         )}
 
         {step === "reset" && (
           <form onSubmit={handleResetPassword} className="space-y-5 mt-6">
             <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
+              <Label htmlFor="new-password" className="text-white">
+                New Password</Label>
               <div className="relative">
                 <Input
                   id="new-password"
@@ -162,7 +251,8 @@ export default function ForgotPasswordPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm Password</Label>
+              <Label htmlFor="confirm-password" className="text-white">
+                Confirm Password</Label>
               <div className="relative">
                 <Input
                   id="confirm-password"
@@ -182,7 +272,7 @@ export default function ForgotPasswordPage() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-muted-foreground space-y-1">
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-xs text-white/70 space-y-1">
               <p className={passwordRules.minLength ? "text-foreground" : ""}>At least 10 characters</p>
               <p className={passwordRules.hasUpper ? "text-foreground" : ""}>Contains an uppercase letter</p>
               <p className={passwordRules.hasLower ? "text-foreground" : ""}>Contains a lowercase letter</p>
@@ -196,10 +286,18 @@ export default function ForgotPasswordPage() {
           </form>
         )}
 
-        <p className="text-sm text-center mt-6 text-muted-foreground">
-          Back to <Link to="/login" className="text-primary hover:underline">Sign In</Link>
+        <p className="text-sm text-center mt-6 text-white/70">
+          Back to <Link to="/login" className="text-white/70 text-primary hover:underline">Sign In</Link>
         </p>
       </div>
+      <p className="text-xs text-white text-center mt-6">
+          Access restricted to authorized DICT personnel only.
+        </p>
+    </div>
+    <div className="absolute bottom-5 w-full flex justify-between px-6 text-xs text-white/60">
+      <span>DICT | NIPPSB</span>
+      <span>© 2025 DICT | NIPPSB. All rights reserved. v1.0.0</span>
+    </div>
     </div>
   );
 }

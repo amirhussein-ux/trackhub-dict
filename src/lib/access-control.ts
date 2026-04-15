@@ -126,3 +126,41 @@ export function canGrantDocumentAccess(user: SessionUser, policyOwnerName: strin
   const owner = normalizeText(policyOwnerName);
   return owner === normalizeText(user.identifier) || owner === normalizeText(user.name);
 }
+
+// Division member mappings for role-based access
+const divisionMemberEmails: Record<string, string[]> = {
+  "PRAD": [
+    "juan.delacruz@dict.gov.ph",
+    "mia.cortez@dict.gov.ph",
+  ],
+  "PPDD": [
+    "maria.santos@dict.gov.ph",
+    "leo.garcia@dict.gov.ph",
+  ],
+  "PPMED": [
+    "pedro.reyes@dict.gov.ph",
+    "ella.ramos@dict.gov.ph",
+  ],
+  "PPMCAD": [
+    "ana.lim@dict.gov.ph",
+    "noel.bautista@dict.gov.ph",
+  ],
+};
+
+export function getUserDivision(user: SessionUser): string | null {
+  const normalizedEmail = normalizeText(user.email);
+  for (const [division, emails] of Object.entries(divisionMemberEmails)) {
+    if (emails.map((e) => normalizeText(e)).includes(normalizedEmail)) {
+      return division;
+    }
+  }
+  return null;
+}
+
+export function isPpmedMember(user: SessionUser): boolean {
+  return getUserDivision(user) === "PPMED";
+}
+
+export function canPublishPolicy(user: SessionUser): boolean {
+  return isPpmedMember(user);
+}

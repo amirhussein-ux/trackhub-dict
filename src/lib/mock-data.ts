@@ -4,7 +4,8 @@ export type PolicyStatus =
   | "Approved"
   | "Under Review"
   | "On Progress"
-  | "On Hold";
+  | "On Hold"
+  | "Published";
 
 export type PolicyType = "Republic Act" | "Executive Order" | "Issuance" | "Administrative Order" | "Memorandum Order";
 
@@ -81,9 +82,10 @@ export const divisions: Division[] = [
   "PPMCAD",
 ];
 
-export function getStatusBadgeVariant(status: PolicyStatus): "approved" | "under-review" | "on-progress" | "on-hold" {
+export function getStatusBadgeVariant(status: PolicyStatus): "approved" | "under-review" | "on-progress" | "on-hold" | "published" {
   switch (status) {
     case "Approved": return "approved";
+    case "Published": return "published";
     case "Under Review": return "under-review";
     case "On Progress": return "on-progress";
     case "On Hold": return "on-hold";

@@ -14,9 +14,10 @@ const timelineSteps: { label: string; key: PolicyStatus }[] = [
   { label: "On Progress", key: "On Progress" },
   { label: "Under Review", key: "Under Review" },
   { label: "Approved", key: "Approved" },
+  { label: "Published", key: "Published" },
 ];
 
-const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved"];
+const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved", "Published"];
 
 export default function PolicyDetailPage() {
   const { id } = useParams();

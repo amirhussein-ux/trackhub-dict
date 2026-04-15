@@ -194,21 +194,17 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
 // Request first-login verification code.
 export const requestFirstLoginCode = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { identifier, email } = req.body as { identifier?: string; email?: string };
+    const { email } = req.body as { email?: string };
 
-    if (!identifier || !email) {
-      res.status(400).json({ message: "Identifier and email are required." });
+    if (!email) {
+      res.status(400).json({ message: "Email is required." });
       return;
     }
 
-    const user = await findUserByIdentifier(identifier);
+    const user = await User.findOne({ email: normalize(email) });
+
     if (!user || !user.firstLogin) {
       res.status(400).json({ message: "First-login session is no longer valid. Please sign in again." });
-      return;
-    }
-
-    if (normalize(user.email) !== normalize(email)) {
-      res.status(400).json({ message: "Entered email does not match the account record." });
       return;
     }
 
@@ -234,14 +230,14 @@ export const requestFirstLoginCode = async (req: Request, res: Response, next: N
 // Verify first-login code.
 export const verifyFirstLoginCode = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { identifier, code } = req.body as { identifier?: string; code?: string };
+    const { email, code } = req.body as { email?: string; code?: string };
 
-    if (!identifier || !code) {
-      res.status(400).json({ message: "Identifier and code are required." });
+    if (!email || !code) {
+      res.status(400).json({ message: "Email and code are required." });
       return;
     }
 
-    const user = await findUserByIdentifier(identifier);
+    const user = await User.findOne({ email: normalize(email) });
     if (!user || !user.firstLogin) {
       res.status(400).json({ message: "First-login session is no longer valid. Please sign in again." });
       return;
@@ -268,14 +264,14 @@ export const verifyFirstLoginCode = async (req: Request, res: Response, next: Ne
 // Complete first-login password change.
 export const completeFirstLoginPasswordChange = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { identifier, code, newPassword } = req.body as {
-      identifier?: string;
+    const { email, code, newPassword } = req.body as {
+      email?: string;
       code?: string;
       newPassword?: string;
     };
 
-    if (!identifier || !code || !newPassword) {
-      res.status(400).json({ message: "Identifier, code, and newPassword are required." });
+    if (!email || !code || !newPassword) {
+      res.status(400).json({ message: "Email, code, and newPassword are required." });
       return;
     }
 
@@ -284,7 +280,7 @@ export const completeFirstLoginPasswordChange = async (req: Request, res: Respon
       return;
     }
 
-    const user = await findUserByIdentifier(identifier);
+    const user = await User.findOne({ email: normalize(email) });
     if (!user || !user.firstLogin) {
       res.status(400).json({ message: "First-login session is no longer valid. Please sign in again." });
       return;
