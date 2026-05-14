@@ -11,6 +11,22 @@ export type PolicyType = "Republic Act" | "Executive Order" | "Issuance" | "Admi
 
 export type Division = "PRAD" | "PPDD" | "PPMED" | "PPMCAD";
 
+export type ApprovalChainEntry = {
+  approverEmail: string;
+  approved: boolean;
+  approvedAt?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+};
+
+export type TimelineEntry = {
+  timestamp: string;
+  event: string;
+  actor: string;
+  description: string;
+  metadata?: Record<string, any>;
+};
+
 export interface Policy {
   id: string;
   policyNumber: string;
@@ -23,6 +39,16 @@ export interface Policy {
   publicationSource?: string;
   publicationDate?: string;
   status: PolicyStatus;
+  workflowState?: string;
+  reviewReady?: boolean;
+  approvalChain?: ApprovalChainEntry[];
+  reviewers?: string[];
+  lastActivityAt?: string;
+  deadline?: string;
+  escalated?: boolean;
+  publishedAt?: string;
+  archivedAt?: string;
+  timeline?: TimelineEntry[];
   referenceLink?: string;
   remarks?: string;
   createdBy: string;
@@ -31,6 +57,7 @@ export interface Policy {
   uploadedBy?: string;
   lastEditedBy?: string;
   accessEmails?: string[];
+  archived?: boolean;
 }
 
 export interface ActivityLog {

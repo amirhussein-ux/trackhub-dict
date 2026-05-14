@@ -79,7 +79,7 @@ export default function FirstLoginPasswordChangePage() {
 
     toast({
       title: "Verification code sent",
-      description: `Check ${email}. Demo code: ${result.previewCode}`,
+      description: result.message,
     });
     setStep("code"); 
   };
@@ -298,7 +298,7 @@ export default function FirstLoginPasswordChangePage() {
         )}
 
         <p className="text-sm text-center mt-6 text-white/70">
-          Back to <Link to="/login" className="text-white/70 text-primary hover:underline">Sign In</Link>
+          Back to <Link to="/login" className="text-white/70 hover:underline">Sign In</Link>
         </p>
       </div>
     </div>

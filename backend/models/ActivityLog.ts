@@ -14,6 +14,9 @@ const activityLogSchema = new Schema(
   { timestamps: true }
 );
 
+activityLogSchema.index({ createdAt: -1 });
+activityLogSchema.index({ user: 1, createdAt: -1 });
+
 const ActivityLog = model("ActivityLog", activityLogSchema);
 
 export default ActivityLog;

@@ -7,7 +7,7 @@ const verificationCodeSchema = new Schema(
   {
     userIdentifier: { type: String, required: true, index: true },
     email: { type: String, required: true, index: true },
-    code: { type: String, required: true },
+    codeHash: { type: String, required: true },
     purpose: { type: String, enum: verificationPurposes, required: true },
     expiresAt: { type: Date, required: true },
     used: { type: Boolean, default: false },

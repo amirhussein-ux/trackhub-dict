@@ -9,6 +9,7 @@ type MinimalDocument = {
   uploadedBy?: string;
   owner?: string;
   accessEmails?: string[];
+  division?: string;
 };
 
 function normalizeText(value: unknown): string {
@@ -20,9 +21,13 @@ function normalizeText(value: unknown): string {
 }
 
 export function normalizeRole(role: SessionUser["role"]): CanonicalUserRole {
-  if (role === "OIC Director" || role === "Admin") return "OIC Director";
-  if (role === "Division Chief" || role === "Policy Owner") return "Division Chief";
+  if (role === "OIC Director") return "OIC Director";
+  if (role === "Division Chief") return "Division Chief";
   return "Division Member";
+}
+
+function isGuestUser(user: SessionUser): boolean {
+  return user.identifier === "guest";
 }
 
 export function isOicDirector(user: SessionUser): boolean {
@@ -34,28 +39,34 @@ export function isDivisionChief(user: SessionUser): boolean {
 }
 
 export function canViewReports(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
   return role === "OIC Director" || role === "Division Chief";
 }
 
 export function canViewUserManagement(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
   return role === "OIC Director" || role === "Division Chief";
 }
 
 export function canEditUsers(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   return isOicDirector(user);
 }
 
 export function canDeleteUsers(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   return isOicDirector(user);
 }
 
 export function canArchiveFromReports(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   return isOicDirector(user);
 }
 
 export function canCreatePolicyRecord(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
   return role === "OIC Director" || role === "Division Chief" || role === "Division Member";
 }
@@ -73,23 +84,29 @@ export function hasPolicyAccess(user: SessionUser, policy: Pick<Policy, "accessE
   return (policy.accessEmails ?? []).map((email) => normalizeText(email)).includes(normalizeText(user.email));
 }
 
-export function canViewPolicyRecord(user: SessionUser, policy: Pick<Policy, "accessEmails" | "createdBy" | "uploadedBy">): boolean {
+export function canViewPolicyRecord(user: SessionUser, policy: Pick<Policy, "accessEmails" | "createdBy" | "uploadedBy" | "division">): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
-  if (role === "OIC Director" || role === "Division Chief" || role === "Division Member") return true;
+  if (role === "OIC Director" || role === "Division Chief") return true;
+  if (user.division && policy.division && user.division === policy.division) return true;
   return hasPolicyAccess(user, policy);
 }
 
 export function canEditPolicyRecord(user: SessionUser, policy: Pick<Policy, "accessEmails" | "createdBy" | "uploadedBy">): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
   if (role === "OIC Director" || role === "Division Chief") return true;
   return hasPolicyAccess(user, policy);
 }
 
 export function canArchivePolicyRecord(user: SessionUser, policy: Pick<Policy, "accessEmails" | "createdBy" | "uploadedBy">): boolean {
-  return canEditPolicyRecord(user, policy);
+  if (isGuestUser(user)) return false;
+  const role = normalizeRole(user.role);
+  return role === "OIC Director" || role === "Division Chief";
 }
 
 export function canGrantPolicyAccess(user: SessionUser, policy: Pick<Policy, "createdBy" | "uploadedBy">): boolean {
+  if (isGuestUser(user)) return false;
   if (isOicDirector(user) || isDivisionChief(user)) {
     return true;
   }
@@ -98,6 +115,7 @@ export function canGrantPolicyAccess(user: SessionUser, policy: Pick<Policy, "cr
 }
 
 export function canViewDocumentRecord(user: SessionUser, doc: MinimalDocument): boolean {
+  if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);
   if (role === "OIC Director" || role === "Division Chief") return true;
 
@@ -107,7 +125,8 @@ export function canViewDocumentRecord(user: SessionUser, doc: MinimalDocument): 
   const uploadedBy = normalizeText(doc.uploadedBy);
   const ownerMatch = owner === normalizeText(user.identifier) || owner === normalizeText(user.name);
   const uploaderMatch = uploadedBy === normalizeText(user.identifier) || uploadedBy === normalizeText(user.name);
-  return allowedByEmail || ownerMatch || uploaderMatch;
+  const sameDivision = user.division ? getUserDivision(user) === doc.division : false;
+  return allowedByEmail || ownerMatch || uploaderMatch || sameDivision;
 }
 
 export function canEditDocumentRecord(user: SessionUser, doc: MinimalDocument): boolean {
@@ -119,6 +138,7 @@ export function canArchiveDocumentRecord(user: SessionUser, doc: MinimalDocument
 }
 
 export function canGrantDocumentAccess(user: SessionUser, policyOwnerName: string): boolean {
+  if (isGuestUser(user)) return false;
   if (isOicDirector(user) || isDivisionChief(user)) {
     return true;
   }
@@ -148,6 +168,10 @@ const divisionMemberEmails: Record<string, string[]> = {
 };
 
 export function getUserDivision(user: SessionUser): string | null {
+  if (user.division) {
+    return user.division;
+  }
+
   const normalizedEmail = normalizeText(user.email);
   for (const [division, emails] of Object.entries(divisionMemberEmails)) {
     if (emails.map((e) => normalizeText(e)).includes(normalizedEmail)) {
@@ -162,5 +186,6 @@ export function isPpmedMember(user: SessionUser): boolean {
 }
 
 export function canPublishPolicy(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
   return isPpmedMember(user);
 }

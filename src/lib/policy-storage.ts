@@ -30,6 +30,16 @@ const toPolicy = (input: PolicyDto): Policy => {
     uploadedBy: input.uploadedBy,
     lastEditedBy: input.lastEditedBy,
     accessEmails: input.accessEmails,
+    workflowState: (input as Policy & { workflowState?: string }).workflowState,
+    reviewReady: (input as Policy & { reviewReady?: boolean }).reviewReady,
+    approvalChain: (input as Policy & { approvalChain?: Policy["approvalChain"] }).approvalChain,
+    reviewers: (input as Policy & { reviewers?: string[] }).reviewers,
+    lastActivityAt: (input as Policy & { lastActivityAt?: string }).lastActivityAt,
+    deadline: (input as Policy & { deadline?: string }).deadline,
+    escalated: (input as Policy & { escalated?: boolean }).escalated,
+    publishedAt: (input as Policy & { publishedAt?: string }).publishedAt,
+    archivedAt: (input as Policy & { archivedAt?: string }).archivedAt,
+    timeline: (input as Policy & { timeline?: Policy["timeline"] }).timeline,
   };
 
   return {
@@ -46,6 +56,14 @@ const toPolicyPayload = (policy: Policy): Omit<Policy, "id"> & { archived?: bool
 async function fetchPoliciesFromApi(): Promise<Policy[]> {
   const response = await apiRequest<PolicyDto[]>("/policies?includeArchived=true");
   return response.map(toPolicy);
+}
+
+export async function refreshPoliciesFromApi(): Promise<Policy[]> {
+  const nextPolicies = await fetchPoliciesFromApi();
+  policyCache = nextPolicies;
+  isHydrated = true;
+  emitDataUpdate();
+  return nextPolicies;
 }
 
 async function hydratePolicies(): Promise<void> {

@@ -1,17 +1,16 @@
 export type UserRole =
   | "OIC Director"
   | "Division Chief"
-  | "Division Member"
-  | "Admin"
-  | "Policy Owner"
-  | "Policy Access"
-  | "Viewer";
+  | "Division Member";
+
+export type Division = "PRAD" | "PPDD" | "PPMED" | "PPMCAD";
 
 export type SessionUser = {
   identifier: string;
   email: string;
   name: string;
   role: UserRole;
+  division?: Division;
 };
 
 const SESSION_STORAGE_KEY = "trackhub.sessionUser";
@@ -20,13 +19,23 @@ const defaultUser: SessionUser = {
   identifier: "guest",
   email: "guest@dict.gov.ph",
   name: "Guest User",
-  role: "Viewer",
+  role: "Division Member",
+  division: undefined,
 };
 
 let sessionUser: SessionUser | null = null;
+let sessionExpiresAt: string | null = null;
 
 function isBrowser(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  return typeof window !== "undefined" && typeof window.sessionStorage !== "undefined";
+}
+
+function isSessionExpired(expiresAt: string | null): boolean {
+  if (!expiresAt) {
+    return false;
+  }
+
+  return Date.parse(expiresAt) <= Date.now();
 }
 
 function readStoredUser(): SessionUser | null {
@@ -35,39 +44,52 @@ function readStoredUser(): SessionUser | null {
   }
 
   try {
-    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) {
       return null;
     }
 
-    const parsed = JSON.parse(raw) as Partial<SessionUser>;
-    if (!parsed.identifier || !parsed.email || !parsed.name || !parsed.role) {
+    const parsed = JSON.parse(raw) as Partial<{ user: SessionUser; expiresAt: string }>;
+    if (!parsed.user || !parsed.user.identifier || !parsed.user.email || !parsed.user.name || !parsed.user.role) {
       return null;
     }
 
+    if (isSessionExpired(parsed.expiresAt ?? null)) {
+      window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+      return null;
+    }
+
+    sessionExpiresAt = parsed.expiresAt ?? null;
     return {
-      identifier: parsed.identifier,
-      email: parsed.email,
-      name: parsed.name,
-      role: parsed.role,
+      identifier: parsed.user.identifier,
+      email: parsed.user.email,
+      name: parsed.user.name,
+      role: parsed.user.role,
+      division: parsed.user.division,
     };
   } catch {
     return null;
   }
 }
 
-export function setCurrentUser(user: SessionUser): void {
+export function setCurrentUser(user: SessionUser, expiresAt?: string): void {
   sessionUser = user;
+  sessionExpiresAt = expiresAt ?? sessionExpiresAt;
 
   if (!isBrowser()) {
     return;
   }
 
-  window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(user));
+  window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ user, expiresAt: sessionExpiresAt }));
 }
 
 export function getCurrentUser(): SessionUser {
   if (sessionUser) {
+    if (isSessionExpired(sessionExpiresAt)) {
+      clearCurrentUser();
+      return defaultUser;
+    }
+
     return sessionUser;
   }
 
@@ -81,20 +103,22 @@ export function getCurrentUser(): SessionUser {
 }
 
 export function canManagePolicies(user: SessionUser): boolean {
+  if (user.identifier === "guest") {
+    return false;
+  }
+
   return user.role === "OIC Director"
     || user.role === "Division Chief"
-    || user.role === "Division Member"
-    || user.role === "Admin"
-    || user.role === "Policy Owner"
-    || user.role === "Policy Access";
+    || user.role === "Division Member";
 }
 
 export function clearCurrentUser(): void {
   sessionUser = null;
+  sessionExpiresAt = null;
 
   if (!isBrowser()) {
     return;
   }
 
-  window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
 }

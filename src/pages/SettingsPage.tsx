@@ -1,58 +1,78 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ConfirmActionDialog } from "@/components/ConfirmActionDialog";
+import { PageErrorState, PageLoadingState } from "@/components/PageFeedbackState";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { apiRequest } from "@/lib/api/client";
+import { requestPasswordReset, logoutUser } from "@/lib/auth-workflows";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { divisions, type Division } from "@/lib/mock-data";
-import { clearCurrentUser, getCurrentUser, setCurrentUser, type UserRole } from "@/lib/user-session";
+import { clearCurrentUser, getCurrentUser, type UserRole } from "@/lib/user-session";
 import { Eye, EyeOff, Lock, ShieldCheck, UserCircle } from "lucide-react";
 
 type ProfileSettings = {
   division: Division;
-  role: UserRole;
   contactNumber: string;
   position: string;
 };
 
 type SecuritySettings = {
-  twoFactorEnabled: boolean;
   showPasswords: boolean;
 };
 
+type AccountRecord = {
+  firstName?: string;
+  lastName?: string;
+  name: string;
+  email: string;
+  role: UserRole;
+};
+
+type PendingConfirmation =
+  | "save-profile"
+  | "update-password"
+  | "send-reset-link"
+  | "logout"
+  | null;
+
 const PROFILE_SETTINGS_KEY = "trackhub.profile-settings";
 const SECURITY_SETTINGS_KEY = "trackhub.security-settings";
+const DEFAULT_CONTACT_PLACEHOLDER = "";
+const DEFAULT_POSITION = "Policy Officer";
+const DEFAULT_DIVISION: Division = "PRAD";
 
-const ROLE_OPTIONS: UserRole[] = ["Admin", "Policy Owner", "Policy Access", "Viewer"];
-
-function loadProfileSettings(defaultRole: UserRole): ProfileSettings {
+function loadProfileSettings(): ProfileSettings {
   try {
     const raw = window.localStorage.getItem(PROFILE_SETTINGS_KEY);
     if (!raw) {
       return {
-        division: "PRAD",
-        role: defaultRole,
-        contactNumber: "+63 917 000 0000",
-        position: "Policy Officer",
+        division: DEFAULT_DIVISION,
+        contactNumber: DEFAULT_CONTACT_PLACEHOLDER,
+        position: DEFAULT_POSITION,
       };
     }
 
-    const parsed = JSON.parse(raw) as ProfileSettings;
-    if (!parsed || !parsed.division || !parsed.role) {
+    const parsed = JSON.parse(raw) as Partial<ProfileSettings>;
+    if (!parsed || !parsed.division) {
       throw new Error("Invalid profile settings");
     }
 
-    return parsed;
+    return {
+      division: parsed.division,
+      contactNumber: parsed.contactNumber ?? DEFAULT_CONTACT_PLACEHOLDER,
+      position: parsed.position ?? DEFAULT_POSITION,
+    };
   } catch {
     return {
-      division: "PRAD",
-      role: defaultRole,
-      contactNumber: "+63 917 000 0000",
-      position: "Policy Officer",
+      division: DEFAULT_DIVISION,
+      contactNumber: DEFAULT_CONTACT_PLACEHOLDER,
+      position: DEFAULT_POSITION,
     };
   }
 }
@@ -61,17 +81,19 @@ function loadSecuritySettings(): SecuritySettings {
   try {
     const raw = window.localStorage.getItem(SECURITY_SETTINGS_KEY);
     if (!raw) {
-      return { twoFactorEnabled: false, showPasswords: false };
+      return { showPasswords: false };
     }
 
-    const parsed = JSON.parse(raw) as SecuritySettings;
-    if (typeof parsed?.twoFactorEnabled !== "boolean" || typeof parsed?.showPasswords !== "boolean") {
-      throw new Error("Invalid security settings");
+    const parsed = JSON.parse(raw) as Partial<SecuritySettings> | null;
+    // Only accept an explicit boolean value from storage. If it's missing or malformed,
+    // fall back to the secure default (do not show passwords).
+    if (parsed && typeof parsed.showPasswords === "boolean") {
+      return { showPasswords: parsed.showPasswords };
     }
 
-    return parsed;
+    return { showPasswords: false };
   } catch {
-    return { twoFactorEnabled: false, showPasswords: false };
+    return { showPasswords: false };
   }
 }
 
@@ -79,17 +101,44 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const currentUser = getCurrentUser();
-
-  const [name, setName] = useState(currentUser.name);
-  const [email, setEmail] = useState(currentUser.email);
-  const [profileSettings, setProfileSettings] = useState<ProfileSettings>(() => loadProfileSettings(currentUser.role));
+  const [account, setAccount] = useState<AccountRecord>({
+    firstName: "",
+    lastName: "",
+    name: currentUser.name,
+    email: currentUser.email,
+    role: currentUser.role,
+  });
+  const [profileSettings, setProfileSettings] = useState<ProfileSettings>(() => loadProfileSettings());
   const [securitySettings, setSecuritySettings] = useState<SecuritySettings>(() => loadSecuritySettings());
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
+  const [isLoadingAccount, setIsLoadingAccount] = useState(true);
+  const [accountLoadError, setAccountLoadError] = useState<string | null>(null);
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const loadAccount = async () => {
+    setIsLoadingAccount(true);
+    setAccountLoadError(null);
+
+    try {
+      const response = await apiRequest<{ user: AccountRecord }>("/auth/me", { method: "GET" });
+      setAccount(response.user);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unable to load account settings right now.";
+      setAccountLoadError(message);
+    } finally {
+      setIsLoadingAccount(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAccount();
+  }, []);
+
   const passwordInputType = securitySettings.showPasswords ? "text" : "password";
+  const accountDisplayName = [account.firstName?.trim(), account.lastName?.trim()].filter(Boolean).join(" ") || account.name;
 
   const passwordStrength = useMemo(() => {
     const hasLength = newPassword.length >= 8;
@@ -101,54 +150,56 @@ export default function SettingsPage() {
   }, [newPassword]);
 
   const saveProfile = () => {
-    if (!name.trim() || !email.trim()) {
-      toast({
-        title: "Missing required fields",
-        description: "Name and email are required.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     try {
       window.localStorage.setItem(PROFILE_SETTINGS_KEY, JSON.stringify(profileSettings));
-      setCurrentUser({
-        ...currentUser,
-        name: name.trim(),
-        email: email.trim().toLowerCase(),
-        role: profileSettings.role,
-      });
-
-      toast({ title: "Profile updated", description: "Account and profile settings were saved." });
+      toast({ title: "Profile updated", description: "Local profile preferences were saved." });
     } catch {
       toast({ title: "Save failed", description: "Unable to save profile settings.", variant: "destructive" });
     }
   };
 
   const updatePassword = () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      toast({ title: "Missing fields", description: "Please complete all password fields.", variant: "destructive" });
-      return;
-    }
+    void (async () => {
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        toast({ title: "Missing fields", description: "Please complete all password fields.", variant: "destructive" });
+        return;
+      }
 
-    if (newPassword !== confirmPassword) {
-      toast({ title: "Password mismatch", description: "New password and confirmation must match.", variant: "destructive" });
-      return;
-    }
+      if (newPassword !== confirmPassword) {
+        toast({ title: "Password mismatch", description: "New password and confirmation must match.", variant: "destructive" });
+        return;
+      }
 
-    if (passwordStrength < 3) {
-      toast({
-        title: "Weak password",
-        description: "Use at least 8 characters with upper/lowercase letters and numbers.",
-        variant: "destructive",
-      });
-      return;
-    }
+      if (passwordStrength < 3) {
+        toast({
+          title: "Weak password",
+          description: "Use at least 8 characters with upper/lowercase letters and numbers.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    toast({ title: "Password updated", description: "Your password has been changed successfully." });
+      try {
+        await apiRequest("/auth/change-password", {
+          method: "POST",
+          body: {
+            currentPassword,
+            newPassword,
+          },
+        });
+
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        toast({ title: "Password updated", description: "Your password has been changed successfully." });
+      } catch (error) {
+        toast({
+          title: "Password update failed",
+          description: error instanceof Error ? error.message : "Unable to update your password right now.",
+          variant: "destructive",
+        });
+      }
+    })();
   };
 
   const saveSecuritySettings = (next: SecuritySettings) => {
@@ -161,18 +212,61 @@ export default function SettingsPage() {
   };
 
   const sendPasswordReset = () => {
-    toast({
-      title: "Password reset initiated",
-      description: `Reset instructions were sent to ${email.trim() || currentUser.email}.`,
-    });
+    void (async () => {
+      const result = await requestPasswordReset(account.email);
+      if (result.ok === false) {
+        toast({ title: "Password reset failed", description: result.message, variant: "destructive" });
+        return;
+      }
+
+      toast({
+        title: "Password reset initiated",
+        description: result.message,
+      });
+    })();
   };
 
   const logout = () => {
-    clearCurrentUser();
-    navigate("/");
+    void (async () => {
+      await logoutUser();
+      clearCurrentUser();
+      navigate("/");
+    })();
   };
 
+  if (isLoadingAccount) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage account, profile, security controls, and session actions.</p>
+        </div>
+        <PageLoadingState title="Loading settings" description="Please wait while we load your account information." />
+      </div>
+    );
+  }
+
+  if (accountLoadError) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">Manage account, profile, security controls, and session actions.</p>
+        </div>
+        <PageErrorState
+          title="We couldn't load your settings"
+          description={accountLoadError}
+          onAction={() => {
+            void loadAccount();
+          }}
+          onSecondaryAction={() => navigate("/dashboard/support")}
+        />
+      </div>
+    );
+  }
+
   return (
+    <>
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Settings</h1>
@@ -182,17 +276,17 @@ export default function SettingsPage() {
       <Card className="shadow-card border-border/50">
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base"><UserCircle className="h-4 w-4" /> Account & Profile Settings</CardTitle>
-          <CardDescription>Edit your profile, role assignment, and contact information.</CardDescription>
+          <CardDescription>Review your account record and manage local profile preferences.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="profile-name">Name</Label>
-              <Input id="profile-name" value={name} onChange={(event) => setName(event.target.value)} />
+              <Input id="profile-name" value={accountDisplayName} readOnly />
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-email">Email</Label>
-              <Input id="profile-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <Input id="profile-email" type="email" value={account.email} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Division</Label>
@@ -210,17 +304,8 @@ export default function SettingsPage() {
             </div>
             <div className="space-y-2">
               <Label>Role</Label>
-              <Select
-                value={profileSettings.role}
-                onValueChange={(value: UserRole) => setProfileSettings((current) => ({ ...current, role: value }))}
-              >
-                <SelectTrigger><SelectValue placeholder="Select role" /></SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((role) => (
-                    <SelectItem key={role} value={role}>{role}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Input value={account.role} readOnly />
+              <p className="text-xs text-muted-foreground">Roles are sourced from the user records in the database and cannot be edited here.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="profile-contact">Contact Info</Label>
@@ -239,7 +324,7 @@ export default function SettingsPage() {
               />
             </div>
           </div>
-          <Button variant="hero" onClick={saveProfile}>Save Profile</Button>
+          <Button variant="hero" onClick={() => setPendingConfirmation("save-profile")}>Save Profile</Button>
         </CardContent>
       </Card>
 
@@ -264,7 +349,7 @@ export default function SettingsPage() {
           <p className="text-xs text-muted-foreground">
             Password strength: {passwordStrength}/4
           </p>
-          <Button variant="hero" onClick={updatePassword}>Update Password</Button>
+          <Button variant="hero" onClick={() => setPendingConfirmation("update-password")}>Update Password</Button>
         </CardContent>
       </Card>
 
@@ -279,10 +364,7 @@ export default function SettingsPage() {
               <p className="text-sm font-medium text-foreground">Two-Factor Authentication</p>
               <p className="text-xs text-muted-foreground">Require an extra verification step at sign-in.</p>
             </div>
-            <Switch
-              checked={securitySettings.twoFactorEnabled}
-              onCheckedChange={(checked) => saveSecuritySettings({ ...securitySettings, twoFactorEnabled: checked })}
-            />
+            <Badge variant="outline">Coming Soon</Badge>
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border/60 p-3">
@@ -305,7 +387,7 @@ export default function SettingsPage() {
               <p className="text-sm font-medium text-foreground">Password Reset</p>
               <p className="text-xs text-muted-foreground">Send account recovery instructions to your email address.</p>
             </div>
-            <Button variant="outline" size="sm" onClick={sendPasswordReset}>Send Reset Link</Button>
+            <Button variant="outline" size="sm" onClick={() => setPendingConfirmation("send-reset-link")}>Send Reset Link</Button>
           </div>
         </CardContent>
       </Card>
@@ -318,9 +400,73 @@ export default function SettingsPage() {
           <CardDescription>End your current session and return to landing page.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="destructive" onClick={logout}>Log Out</Button>
+          <Button variant="destructive" onClick={() => setPendingConfirmation("logout")}>Log Out</Button>
         </CardContent>
       </Card>
     </div>
+    <ConfirmActionDialog
+      open={pendingConfirmation !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPendingConfirmation(null);
+        }
+      }}
+      title={
+        pendingConfirmation === "save-profile"
+          ? "Save profile preferences?"
+          : pendingConfirmation === "update-password"
+            ? "Update your password?"
+            : pendingConfirmation === "send-reset-link"
+              ? "Send password reset instructions?"
+              : pendingConfirmation === "logout"
+                ? "Log out of TrackHub?"
+                : ""
+      }
+      description={
+        pendingConfirmation === "save-profile"
+          ? "This will save your division, contact info, and position preferences on this device."
+          : pendingConfirmation === "update-password"
+            ? "Your password fields will be submitted and your credentials will be updated."
+            : pendingConfirmation === "send-reset-link"
+              ? `Reset instructions will be sent to ${account.email}.`
+              : pendingConfirmation === "logout"
+                ? "Your current session will end and you will be returned to the landing page."
+                : ""
+      }
+      confirmLabel={
+        pendingConfirmation === "save-profile"
+          ? "Save"
+          : pendingConfirmation === "update-password"
+            ? "Update Password"
+            : pendingConfirmation === "send-reset-link"
+              ? "Send Reset Link"
+              : pendingConfirmation === "logout"
+                ? "Log Out"
+                : "Confirm"
+      }
+      confirmVariant={pendingConfirmation === "logout" ? "destructive" : "default"}
+      onConfirm={async () => {
+        if (pendingConfirmation === "save-profile") {
+          saveProfile();
+          return;
+        }
+
+        if (pendingConfirmation === "update-password") {
+          updatePassword();
+          return;
+        }
+
+        if (pendingConfirmation === "send-reset-link") {
+          sendPasswordReset();
+          return;
+        }
+
+        if (pendingConfirmation === "logout") {
+          logout();
+          return;
+        }
+      }}
+    />
+    </>
   );
 }

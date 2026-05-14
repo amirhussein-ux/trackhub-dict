@@ -22,8 +22,9 @@ import { Input } from "@/components/ui/input";
 import { canArchiveFromReports, canViewReports } from "@/lib/access-control";
 import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
 import { type Division, type Policy, type PolicyStatus } from "../lib/mock-data";
-import { loadPoliciesFromStorage, savePoliciesToStorage } from "../lib/policy-storage";
-import { appendActivity, appendPolicyNotifications, subscribeToDataUpdates } from "../lib/records-storage";
+import { loadPoliciesFromStorage } from "../lib/policy-storage";
+import { subscribeToDataUpdates } from "../lib/records-storage";
+import { PolicyAutomationService } from "@/lib/api/automationService";
 import { getCurrentUser } from "@/lib/user-session";
 
 const statusColors: Record<PolicyStatus, string> = {
@@ -268,7 +269,7 @@ export default function ReportsPage() {
     setSortDirection("asc");
   };
 
-  const handleArchive = (id: string) => {
+  const handleArchive = async (id: string) => {
     if (!canArchiveFromReports(currentUser)) {
       return;
     }
@@ -278,26 +279,11 @@ export default function ReportsPage() {
       return;
     }
 
-    const nextPolicies: Policy[] = policies.map((policy) => (
-      policy.id === id
-        ? { ...policy, status: "On Hold", lastUpdated: new Date().toISOString().slice(0, 10) }
-        : policy
-    ));
-    savePoliciesToStorage(nextPolicies);
-
-    appendActivity({
-      user: currentUser.identifier,
-      action: "Archived policy from Reports page",
-      policyTitle: getDisplayedPolicyTitle(target),
-      type: "status",
-    });
-
-    appendPolicyNotifications({
-      policyId: target.id,
-      policyTitle: getDisplayedPolicyTitle(target),
-      changeType: "Archived policy from Reports page",
-      recipients: Array.from(new Set([...(target.accessEmails ?? []), currentUser.email])),
-    });
+    try {
+      await PolicyAutomationService.archivePolicy(target.id);
+    } catch {
+      // Ignore archive failures to keep the report view responsive.
+    }
   };
 
   const exportStatusReportCsv = () => {

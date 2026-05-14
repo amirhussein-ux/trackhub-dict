@@ -7,6 +7,36 @@ This backend is aligned with your current frontend pages and data contracts.
 - Local: `http://localhost:5000`
 - API Prefix: `/api`
 
+## Environment Variables
+
+Required server-side values:
+
+- `MONGODB_URL`
+- `AUTH_SESSION_SECRET` (or `SESSION_SECRET`)
+- `SEED_ADMIN_PASSWORD`
+- `SEED_DIVISION_CHIEF_PASSWORD`
+- `SEED_DIVISION_MEMBER_PASSWORD`
+
+Optional server-side values:
+
+- `PORT` (default `5000`)
+- `FRONTEND_URL` (default `http://localhost:8080`)
+- `SUPPORT_EMAIL` (Gmail address that receives support concerns)
+- `SUPPORT_EMAIL_PASSWORD` (Gmail App Password for SMTP delivery)
+
+Use `.env.example` as the template and keep real `.env` files out of source control.
+
+## Abuse Protection
+
+The backend enforces in-memory request throttling to reduce brute force, bot scraping, and automated endpoint abuse.
+
+- Global API limiter on `/api`
+- Auth limiter on `/api/auth` plus stricter login limiter on `POST /api/auth/login`
+- Read limiter (`GET`) and creation limiter (`POST`) on protected resource endpoints
+- Reserved strict limiter for AI generation paths: `/api/ai` and `/api/generate`
+
+These limits are intentionally conservative defaults for local and small deployments.
+
 ## Health
 
 - `GET /api/health`
@@ -62,10 +92,26 @@ Supported query params for `GET /api/documents`:
 - `GET /api/notifications`
 - `PATCH /api/notifications/:id/read`
 
+## Contact & Support
+
+- `POST /api/support/contact`
+
+Multipart form fields:
+- `fullName`
+- `email`
+- `department` (optional)
+- `subject`
+- `category`
+- `message`
+- `attachment` (optional)
+
+Attachment rules:
+- Max size: `5 MB`
+- Allowed types: `pdf`, `docx`, `png`, `jpg`
+
 ## Notes
 
 - Default demo users are automatically seeded at startup if user collection is empty.
 - Password rules are aligned with frontend requirements:
   - Minimum 10 characters
   - Uppercase, lowercase, number, special character
-- For demo parity with your current frontend UX, code request endpoints return `previewCode`.

@@ -37,6 +37,18 @@ let notificationCache: Notification[] = [];
 let isHydratingData = false;
 let isDataHydrated = false;
 
+const mojibakeBulletPatterns = [
+  /\u00E2\u20AC\u00A2/g,
+  /\u00C3\u00A2\u00E2\u201A\u00AC\u00C2\u00A2/g,
+];
+
+function normalizeNotificationChangeType(value: string): string {
+  return mojibakeBulletPatterns.reduce(
+    (currentValue, pattern) => currentValue.replace(pattern, "\u2022"),
+    value,
+  );
+}
+
 const toDocument = (input: DocumentDto): RepositoryDocument => ({
   id: input._id ?? input.id ?? "",
   policyId: input.policyId,
@@ -72,7 +84,7 @@ const toNotification = (input: NotificationDto): Notification => ({
   id: input._id ?? input.id ?? "",
   policyId: input.policyId,
   policyTitle: input.policyTitle,
-  changeType: input.changeType,
+  changeType: normalizeNotificationChangeType(input.changeType),
   timestamp: input.timestamp,
   read: input.read,
   recipientEmail: input.recipientEmail,
@@ -142,6 +154,10 @@ async function hydrateAllData(): Promise<void> {
   }
 }
 
+export async function refreshAllDataFromApi(): Promise<void> {
+  await hydrateAllData();
+}
+
 export function fileToDataUrl(file: File): Promise<{ dataUrl: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -179,11 +195,20 @@ export function saveDocumentsToStorage(documents: RepositoryDocument[]): void {
 
       for (const doc of documents) {
         if (doc.id && currentById.has(doc.id)) {
-          await apiRequest(`/documents/${doc.id}`, {
-            method: "PUT",
-            body: toDocumentPayload(doc),
-          });
-          continue;
+          try {
+            await apiRequest(`/documents/${doc.id}`, {
+              method: "PUT",
+              body: toDocumentPayload(doc),
+            });
+            continue;
+          } catch (error) {
+            // If the PUT target is missing (404), fall back to creating a new document record.
+            // This prevents "Mark as Final" from breaking due to cache drift (PUT 404).
+            const status = error && typeof error === "object" && "status" in error ? (error as { status?: number }).status : undefined;
+            if (status !== 404) {
+              throw error;
+            }
+          }
         }
 
         await apiRequest("/documents", {
@@ -317,12 +342,12 @@ export function appendPolicyNotifications(payload: {
           body: {
             policyId: payload.policyId,
             policyTitle: payload.policyTitle,
-            changeType: `${payload.changeType} • To ${recipient}`,
+            changeType: `${payload.changeType} \u2022 To ${recipient}`,
             timestamp,
             read: false,
             recipientEmail: recipient,
           },
-        }))
+        })),
       );
 
       notificationCache = (await apiRequest<NotificationDto[]>("/notifications")).map(toNotification);

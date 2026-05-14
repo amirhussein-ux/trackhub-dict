@@ -4,14 +4,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Archive, FileText, FolderOpen } from "lucide-react";
-import { loadPoliciesFromStorage, savePoliciesToStorage } from "@/lib/policy-storage";
+import { ConfirmActionDialog } from "@/components/ConfirmActionDialog";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { loadDocumentsFromStorage, saveDocumentsToStorage, subscribeToDataUpdates } from "@/lib/records-storage";
 import { getCurrentUser } from "@/lib/user-session";
+import { PolicyAutomationService } from "@/lib/api/automationService";
+
+type PendingRestore = {
+  policyId: string;
+  policyNumber: string;
+  policyTitle: string;
+};
 
 export default function ArchivePage() {
   const currentUser = getCurrentUser();
   const [policies, setPolicies] = useState(() => loadPoliciesFromStorage());
   const [documents, setDocuments] = useState(() => loadDocumentsFromStorage());
+  const [pendingRestore, setPendingRestore] = useState<PendingRestore | null>(null);
 
   useEffect(() => {
     return subscribeToDataUpdates(() => {
@@ -23,23 +32,17 @@ export default function ArchivePage() {
   const archivedPolicies = useMemo(() => policies.filter((policy) => (policy as { archived?: boolean }).archived), [policies]);
   const archivedDocuments = useMemo(() => documents.filter((doc) => doc.status === "Archived"), [documents]);
 
-  const handleRestorePolicy = (policyId: string, policyNumber: string) => {
+  const handleRestorePolicy = async (policyId: string, policyNumber: string) => {
     const today = new Date().toISOString().slice(0, 10);
 
-    const nextPolicies = policies.map((policy) => {
-      if (policy.id !== policyId && policy.policyNumber !== policyNumber) {
-        return policy;
-      }
-
+    const targetPolicy = policies.find((policy) => policy.id === policyId || policy.policyNumber === policyNumber);
+    if (targetPolicy) {
       const note = `${today} | Restored from archive`;
-      return {
-        ...policy,
+      await PolicyAutomationService.updatePolicyDetails(targetPolicy.id, {
         archived: false,
-        lastUpdated: today,
-        lastEditedBy: currentUser.identifier,
-        remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${note}`,
-      };
-    });
+        remarks: `${targetPolicy.remarks?.trim() ? `${targetPolicy.remarks}\n` : ""}${note}`,
+      });
+    }
 
     const nextDocuments = documents.map((doc) => {
       if (doc.policyId !== policyId && doc.policyNumber !== policyNumber) {
@@ -55,11 +58,11 @@ export default function ArchivePage() {
       };
     });
 
-    savePoliciesToStorage(nextPolicies);
     saveDocumentsToStorage(nextDocuments);
   };
 
   return (
+    <>
     <div className="space-y-6 animate-fade-in">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Archive</h1>
@@ -109,7 +112,15 @@ export default function ArchivePage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="on-hold">Archived</Badge>
-                      <Button size="sm" variant="outline" onClick={() => handleRestorePolicy(policy.id, policy.policyNumber)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPendingRestore({
+                          policyId: policy.id,
+                          policyNumber: policy.policyNumber,
+                          policyTitle: policy.title,
+                        })}
+                      >
                         Restore
                       </Button>
                     </div>
@@ -149,5 +160,29 @@ export default function ArchivePage() {
         </CardContent>
       </Card>
     </div>
+    <ConfirmActionDialog
+      open={pendingRestore !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          setPendingRestore(null);
+        }
+      }}
+      title="Restore archived policy?"
+      description={
+        pendingRestore
+          ? `Restore ${pendingRestore.policyNumber} - ${pendingRestore.policyTitle} and return its archived documents to the active repository?`
+          : ""
+      }
+      confirmLabel="Restore"
+      onConfirm={async () => {
+        if (!pendingRestore) {
+          return;
+        }
+
+        handleRestorePolicy(pendingRestore.policyId, pendingRestore.policyNumber);
+        setPendingRestore(null);
+      }}
+    />
+    </>
   );
 }

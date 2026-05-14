@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { appendActivity, appendPolicyNotifications, loadNotificationsFromStorage, saveNotificationsToStorage, subscribeToDataUpdates } from "@/lib/records-storage";
-import { loadPoliciesFromStorage, updatePolicyInApi } from "@/lib/policy-storage";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
+import { PolicyAutomationService } from "@/lib/api/automationService";
 import { getCurrentUser } from "@/lib/user-session";
 import { canGrantPolicyAccess } from "@/lib/access-control";
 import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
@@ -18,8 +19,24 @@ type ParsedAccessRequest = {
   requesterEmail: string;
 };
 
+const mojibakeBulletVariants = [
+  " \u2022 ",
+  " \u00E2\u20AC\u00A2 ",
+  " \u00C3\u00A2\u00E2\u201A\u00AC\u00C2\u00A2 ",
+];
+
+function splitAccessRequestBase(changeType: string): string {
+  for (const separator of mojibakeBulletVariants) {
+    if (changeType.includes(separator)) {
+      return changeType.split(separator)[0];
+    }
+  }
+
+  return changeType;
+}
+
 function parseAccessRequest(changeType: string): { requesterIdentifier: string; requesterEmail: string } | null {
-  const base = changeType.split(" • ")[0];
+  const base = splitAccessRequestBase(changeType);
   const parts = base.split("|");
   if (parts.length !== 3 || parts[0] !== "ACCESS_REQUEST") {
     return null;
@@ -91,27 +108,7 @@ export default function AccessRequestsPage() {
       return;
     }
 
-    const nextAccessEmails = Array.from(new Set([...(policy.accessEmails ?? []), request.requesterEmail]));
-    await updatePolicyInApi(policy.id, {
-      accessEmails: nextAccessEmails,
-      lastEditedBy: currentUser.identifier,
-      lastUpdated: new Date().toISOString().slice(0, 10),
-      remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${new Date().toISOString().slice(0, 10)} | Approved access request for ${request.requesterIdentifier}`,
-    });
-
-    appendActivity({
-      user: currentUser.identifier,
-      action: `Approved access request for ${request.requesterIdentifier}`,
-      policyTitle: getDisplayedPolicyTitle(policy),
-      type: "update",
-    });
-
-    appendPolicyNotifications({
-      policyId: policy.id,
-      policyTitle: getDisplayedPolicyTitle(policy),
-      changeType: `Access request approved by ${currentUser.identifier}`,
-      recipients: [request.requesterEmail],
-    });
+    await PolicyAutomationService.grantAccess(policy.id, request.requesterEmail);
 
     markRequestHandled(request.id);
     toast({ title: "Request approved", description: `${request.requesterIdentifier} now has access.` });

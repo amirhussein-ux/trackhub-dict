@@ -21,13 +21,16 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { ConfirmActionDialog } from "@/components/ConfirmActionDialog";
+import { logoutUser } from "@/lib/auth-workflows";
 import { loadNotificationsFromStorage, saveNotificationsToStorage, subscribeToDataUpdates } from "@/lib/records-storage";
-import { getCurrentUser } from "@/lib/user-session";
+import { clearCurrentUser, getCurrentUser } from "@/lib/user-session";
 
 export default function DashboardLayout() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
   const [notifications, setNotifications] = useState(() => loadNotificationsFromStorage());
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   useEffect(() => {
@@ -45,8 +48,11 @@ export default function DashboardLayout() {
   };
 
   const groupByDate = (items: typeof notifications) => {
-    const today = "2025-03-08";
-    const yesterday = "2025-03-07";
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(now.getDate() - 1);
+    const yesterday = yesterdayDate.toISOString().slice(0, 10);
     const groups: Record<string, typeof items> = { Today: [], Yesterday: [], Earlier: [] };
     items.forEach((n) => {
       const date = n.timestamp.split(" ")[0];
@@ -60,6 +66,7 @@ export default function DashboardLayout() {
   const grouped = groupByDate(notifications);
 
   return (
+    <>
     <SidebarProvider defaultOpen={false}>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
@@ -162,7 +169,7 @@ export default function DashboardLayout() {
                     <HelpCircle className="h-4 w-4 mr-2" /> Contact & Support
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => navigate("/")} className="text-destructive focus:text-destructive">
+                  <DropdownMenuItem onClick={() => setLogoutDialogOpen(true)} className="text-destructive focus:text-destructive">
                     <LogOut className="h-4 w-4 mr-2" /> Logout
                   </DropdownMenuItem>
                 </DropdownMenuContent>
@@ -177,5 +184,19 @@ export default function DashboardLayout() {
         </div>
       </div>
     </SidebarProvider>
+    <ConfirmActionDialog
+      open={logoutDialogOpen}
+      onOpenChange={setLogoutDialogOpen}
+      title="Log out of TrackHub?"
+      description="Your current session will end and you will be returned to the landing page."
+      confirmLabel="Log Out"
+      confirmVariant="destructive"
+      onConfirm={async () => {
+        await logoutUser();
+        clearCurrentUser();
+        navigate("/");
+      }}
+    />
+    </>
   );
 }

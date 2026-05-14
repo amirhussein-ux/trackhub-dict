@@ -39,6 +39,7 @@ import {
   List,
 } from "lucide-react";
 import { divisions, type Division, type PolicyType } from "@/lib/mock-data";
+import { buildEmptyDivisionMembers, fetchDivisionMembers } from "@/lib/user-directory";
 import { useToast } from "@/hooks/use-toast";
 import {
   appendActivity,
@@ -48,14 +49,16 @@ import {
   subscribeToDataUpdates,
   type RepositoryDocument,
 } from "@/lib/records-storage";
-import { loadPoliciesFromStorage, savePoliciesToStorage } from "@/lib/policy-storage";
+import { loadPoliciesFromStorage } from "@/lib/policy-storage";
 import { getCurrentUser } from "@/lib/user-session";
+import { PolicyAutomationService } from "@/lib/api/automationService";
 import {
   canArchiveDocumentRecord,
   canEditDocumentRecord,
   canGrantDocumentAccess,
   canViewDocumentRecord,
 } from "@/lib/access-control";
+import { DocumentPreview, openDocumentPreviewInNewTab } from "@/components/DocumentPreview";
 
 const CATEGORIES: PolicyType[] = ["Republic Act", "Executive Order", "Issuance", "Administrative Order", "Memorandum Order"];
 
@@ -64,61 +67,6 @@ type QuickFilter = "all" | "pdf" | "docx" | "other";
 const fileIcons: Record<string, typeof FileText> = { pdf: FileText, docx: File, xlsx: Sheet, jpg: Image, png: Image };
 const fileColors: Record<string, string> = { pdf: "text-primary", docx: "text-secondary", xlsx: "text-accent", jpg: "text-destructive", png: "text-destructive" };
 
-const divisionMembers: Record<Division, { name: string; email: string }[]> = {
-  PRAD: [
-    { name: "Juan Dela Cruz", email: "juan.delacruz@dict.gov.ph" },
-    { name: "Mia Cortez", email: "mia.cortez@dict.gov.ph" },
-  ],
-  PPDD: [
-    { name: "Maria Santos", email: "maria.santos@dict.gov.ph" },
-    { name: "Leo Garcia", email: "leo.garcia@dict.gov.ph" },
-  ],
-  PPMED: [
-    { name: "Pedro Reyes", email: "pedro.reyes@dict.gov.ph" },
-    { name: "Ella Ramos", email: "ella.ramos@dict.gov.ph" },
-  ],
-  PPMCAD: [
-    { name: "Ana Lim", email: "ana.lim@dict.gov.ph" },
-    { name: "Noel Bautista", email: "noel.bautista@dict.gov.ph" },
-  ],
-};
-
-function buildPreviewBody(doc: RepositoryDocument): string {
-  if (!doc.fileDataUrl) {
-    return `
-      <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#f8fafc;color:#475569;padding:20px;text-align:center;">
-        File preview is unavailable for this legacy record. Upload a new version to enable native preview.
-      </div>
-    `;
-  }
-
-  if (doc.type === "jpg" || doc.type === "png") {
-    return `
-      <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;overflow:hidden;display:flex;align-items:center;justify-content:center;">
-        <img src="${doc.fileDataUrl}" alt="${doc.name}" style="max-width:100%;max-height:100%;object-fit:contain;" />
-      </div>
-    `;
-  }
-
-  if (doc.type === "pdf") {
-    return `
-      <div style="height:70vh;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;overflow:hidden;">
-        <iframe src="${doc.fileDataUrl}" title="${doc.name}" style="width:100%;height:100%;border:0;"></iframe>
-      </div>
-    `;
-  }
-
-  return `
-    <div style="height:360px;border:1px dashed #cbd5e1;border-radius:12px;padding:20px;background:#f8fafc;color:#334155;line-height:1.6;">
-      <p><strong>Document:</strong> ${doc.name}</p>
-      <p><strong>Type:</strong> ${doc.type.toUpperCase()}</p>
-      <p><strong>Policy:</strong> ${doc.policyTitle}</p>
-      <p><strong>Division:</strong> ${doc.division}</p>
-      <p><strong>Last Edited:</strong> ${doc.lastEdited}</p>
-      <p style="margin-top:16px;color:#64748b;">Document preview metadata is shown here for non-image/non-PDF files.</p>
-    </div>
-  `;
-}
 
 export default function DocumentRepositoryPage() {
   const currentUser = getCurrentUser();
@@ -134,6 +82,7 @@ export default function DocumentRepositoryPage() {
   const [renameDoc, setRenameDoc] = useState<RepositoryDocument | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [shareDoc, setShareDoc] = useState<RepositoryDocument | null>(null);
+  const [divisionMembers, setDivisionMembers] = useState(buildEmptyDivisionMembers());
   const [shareDivision, setShareDivision] = useState<Division | "">("");
   const [shareMember, setShareMember] = useState("");
   const [shareNote, setShareNote] = useState("");
@@ -149,6 +98,12 @@ export default function DocumentRepositoryPage() {
     });
   }, []);
 
+  useEffect(() => {
+    void fetchDivisionMembers()
+      .then((members) => setDivisionMembers(members))
+      .catch(() => setDivisionMembers(buildEmptyDivisionMembers()));
+  }, []);
+
   const downloadDocument = (doc: RepositoryDocument) => {
     if (!doc.fileDataUrl) {
       toast({ title: "Download unavailable", description: "This legacy record has no file data. Upload a new version first." });
@@ -161,76 +116,6 @@ export default function DocumentRepositoryPage() {
     document.body.appendChild(anchor);
     anchor.click();
     document.body.removeChild(anchor);
-  };
-
-  const openPreview = (doc: RepositoryDocument) => {
-    if (doc.fileDataUrl && (doc.type === "pdf" || doc.type === "jpg" || doc.type === "png")) {
-      const tab = window.open(doc.fileDataUrl, "_blank", "noopener,noreferrer");
-      if (!tab) {
-        toast({ title: "Preview blocked", description: "Please allow pop-ups to open document previews." });
-      }
-      return;
-    }
-
-    const previewBody = buildPreviewBody(doc);
-    const fileContent = `Document: ${doc.name}\nPolicy: ${doc.policyTitle}\nDivision: ${doc.division}\nLast Edited: ${doc.lastEdited}`;
-
-    const previewHtml = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>Preview - ${doc.name}</title>
-          <style>
-            body { font-family: Segoe UI, sans-serif; margin: 0; padding: 24px; color: #0f172a; background: #ffffff; }
-            .toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
-            button { border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a; padding: 8px 14px; border-radius: 8px; cursor: pointer; }
-            button:hover { background: #e2e8f0; }
-            .meta { color: #475569; font-size: 14px; margin-bottom: 14px; }
-          </style>
-        </head>
-        <body>
-          <h2 style="margin:0 0 6px 0;">${doc.name}</h2>
-          <div class="meta">${doc.policyTitle} • ${doc.division} • v${doc.version}</div>
-          <div class="toolbar">
-            <button id="downloadBtn">Download</button>
-            <button id="printBtn">Print</button>
-          </div>
-          ${previewBody}
-          <script>
-            const content = ${JSON.stringify(fileContent)};
-            document.getElementById('downloadBtn')?.addEventListener('click', () => {
-              const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = ${JSON.stringify(doc.name)};
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(url);
-            });
-            document.getElementById('printBtn')?.addEventListener('click', () => window.print());
-          </script>
-        </body>
-      </html>
-    `;
-
-    try {
-      const previewBlob = new Blob([previewHtml], { type: "text/html;charset=utf-8" });
-      const previewUrl = URL.createObjectURL(previewBlob);
-      const tab = window.open(previewUrl, "_blank");
-      if (!tab) {
-        URL.revokeObjectURL(previewUrl);
-        toast({ title: "Preview blocked", description: "Please allow pop-ups to open document previews." });
-        return;
-      }
-
-      // Give the browser enough time to load the blob page before releasing the URL.
-      setTimeout(() => URL.revokeObjectURL(previewUrl), 10000);
-    } catch {
-      toast({ title: "Preview unavailable", description: "Unable to open preview for this document." });
-    }
   };
 
   const openRename = (doc: RepositoryDocument) => {
@@ -287,25 +172,16 @@ export default function DocumentRepositoryPage() {
     other: visibleDocuments.filter((d) => !["pdf", "docx"].includes(d.type) && d.status !== "Archived").length,
   };
 
-  const updatePolicyArchiveState = (policyId: string, policyNumber: string, shouldArchive: boolean) => {
-    const now = new Date().toISOString().slice(0, 10);
-    const policies = loadPoliciesFromStorage();
-    const nextPolicies = policies.map((policy) => {
-      if (policy.id !== policyId && policy.policyNumber !== policyNumber) {
-        return policy;
-      }
+  const updatePolicyArchiveState = async (policyId: string, _policyNumber: string, shouldArchive: boolean) => {
+    if (!shouldArchive) {
+      return;
+    }
 
-      return {
-        ...policy,
-        archived: shouldArchive,
-        status: shouldArchive ? "On Hold" : policy.status,
-        lastUpdated: now,
-        lastEditedBy: currentUser.identifier,
-        remarks: `${policy.remarks?.trim() ? `${policy.remarks}\n` : ""}${now} | ${shouldArchive ? "Archived from repository" : "Returned to active repository"}`,
-      };
-    });
-
-    savePoliciesToStorage(nextPolicies);
+    try {
+      await PolicyAutomationService.archivePolicy(policyId);
+    } catch {
+      // Ignore archive failures to keep the repository flow responsive.
+    }
   };
 
   const handleRenameSave = () => {
@@ -389,7 +265,7 @@ export default function DocumentRepositoryPage() {
       remarks: `${today} | Archived before deletion`,
     }));
 
-    updatePolicyArchiveState(archiveDoc.policyId, archiveDoc.policyNumber, true);
+    void updatePolicyArchiveState(archiveDoc.policyId, archiveDoc.policyNumber, true);
 
     appendActivity({ user: currentUser.identifier, action: "Archived repository document", policyTitle: archiveDoc.policyTitle, type: "status" });
     appendPolicyNotifications({
@@ -547,7 +423,7 @@ export default function DocumentRepositoryPage() {
                         <span>{doc.owner}</span>
                       </div>
                       <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openPreview(doc)}><Eye className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openDocumentPreviewInNewTab(doc)}><Eye className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => downloadDocument(doc)}><Download className="h-4 w-4" /></Button>
                         <DocKebab doc={doc} />
                       </div>
@@ -589,7 +465,7 @@ export default function DocumentRepositoryPage() {
                     <Clock className="h-3 w-3" />{doc.lastEdited} · {doc.owner}
                   </div>
                   <div className="flex gap-1 mt-3 pt-3 border-t border-border/50">
-                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => openPreview(doc)}><Eye className="h-3 w-3 mr-1" /> Preview</Button>
+                    <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => openDocumentPreviewInNewTab(doc)}><Eye className="h-3 w-3 mr-1" /> Preview</Button>
                     <Button variant="ghost" size="sm" className="flex-1 h-8 text-xs" onClick={() => downloadDocument(doc)}><Download className="h-3 w-3 mr-1" /> Download</Button>
                   </div>
                 </CardContent>

@@ -30,6 +30,11 @@ const repositoryDocumentSchema = new Schema(
   { timestamps: true }
 );
 
+repositoryDocumentSchema.index({ createdAt: -1 });
+repositoryDocumentSchema.index({ division: 1, status: 1, createdAt: -1 });
+repositoryDocumentSchema.index({ owner: 1, uploadedBy: 1 });
+repositoryDocumentSchema.index({ accessEmails: 1 });
+
 const RepositoryDocument = model("RepositoryDocument", repositoryDocumentSchema);
 
 export default RepositoryDocument;

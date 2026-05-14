@@ -1,10 +1,20 @@
 import { NextFunction, Request, Response } from "express";
 import Item from "../models/Item";
+import { canAccessItem, getAuthenticatedUser, isPrivilegedUser } from "../utils/ownership";
 
 // Create a new item.
 export const createItem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const item = await Item.create(req.body);
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const { owner, ...itemData } = req.body as Record<string, unknown>;
+    const item = await Item.create({
+      ...itemData,
+      owner: currentUser.identifier,
+    });
     res.status(201).json(item);
   } catch (error) {
     next(error);
@@ -12,9 +22,16 @@ export const createItem = async (req: Request, res: Response, next: NextFunction
 };
 
 // Get all items.
-export const getItems = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const getItems = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const items = await Item.find().sort({ createdAt: -1 });
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const items = isPrivilegedUser(currentUser)
+      ? await Item.find().sort({ createdAt: -1 })
+      : await Item.find({ owner: currentUser.identifier }).sort({ createdAt: -1 });
     res.status(200).json(items);
   } catch (error) {
     next(error);
@@ -24,9 +41,14 @@ export const getItems = async (_req: Request, res: Response, next: NextFunction)
 // Get a single item by id.
 export const getItemById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
     const item = await Item.findById(req.params.id);
 
-    if (!item) {
+    if (!item || !canAccessItem(currentUser, item)) {
       res.status(404).json({ message: "Item not found." });
       return;
     }
@@ -40,7 +62,19 @@ export const getItemById = async (req: Request, res: Response, next: NextFunctio
 // Update an item by id.
 export const updateItem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const updatedItem = await Item.findByIdAndUpdate(req.params.id, req.body, {
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const existingItem = await Item.findById(req.params.id);
+    if (!existingItem || !canAccessItem(currentUser, existingItem)) {
+      res.status(404).json({ message: "Item not found." });
+      return;
+    }
+
+    const { owner, ...updateData } = req.body as Record<string, unknown>;
+    const updatedItem = await Item.findByIdAndUpdate(req.params.id, updateData, {
       new: true,
       runValidators: true,
     });
@@ -59,6 +93,17 @@ export const updateItem = async (req: Request, res: Response, next: NextFunction
 // Delete an item by id.
 export const deleteItem = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    const existingItem = await Item.findById(req.params.id);
+    if (!existingItem || !canAccessItem(currentUser, existingItem)) {
+      res.status(404).json({ message: "Item not found." });
+      return;
+    }
+
     const deletedItem = await Item.findByIdAndDelete(req.params.id);
 
     if (!deletedItem) {

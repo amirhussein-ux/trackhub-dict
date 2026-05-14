@@ -13,16 +13,17 @@ import { Archive, ChevronLeft, ChevronRight, ExternalLink, Info, MoreVertical, P
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { divisions, type Division, type Policy, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
+import { buildEmptyDivisionMembers, fetchDivisionMembers } from "@/lib/user-directory";
 import {
   canArchivePolicyRecord,
   canCreatePolicyRecord,
   canEditPolicyRecord,
   canGrantPolicyAccess,
   canViewPolicyRecord,
-  canPublishPolicy,
 } from "@/lib/access-control";
 import { getDisplayedPolicyTitle } from "@/lib/policy-utils";
-import { createPolicyInApi, loadPoliciesFromStorage, updatePolicyInApi } from "@/lib/policy-storage";
+import { createPolicyInApi, loadPoliciesFromStorage } from "@/lib/policy-storage";
+import { PolicyAutomationService } from "@/lib/api/automationService";
 import {
   appendActivity,
   appendPolicyNotifications,
@@ -30,6 +31,7 @@ import {
   formatBytesToReadableSize,
   getDocumentTypeFromFilename,
   loadDocumentsFromStorage,
+  refreshAllDataFromApi,
   saveDocumentsToStorage,
   subscribeToDataUpdates,
   type RepositoryDocument,
@@ -45,26 +47,9 @@ const PAGE_SIZE = 8;
 
 type ManagedPolicy = Policy & {
   archived?: boolean;
+  workflowState?: string;
 };
 
-const divisionMembers: Record<Division, { name: string; email: string }[]> = {
-  PRAD: [
-    { name: "Juan Dela Cruz", email: "juan.delacruz@dict.gov.ph" },
-    { name: "Mia Cortez", email: "mia.cortez@dict.gov.ph" },
-  ],
-  PPDD: [
-    { name: "Maria Santos", email: "maria.santos@dict.gov.ph" },
-    { name: "Leo Garcia", email: "leo.garcia@dict.gov.ph" },
-  ],
-  PPMED: [
-    { name: "Pedro Reyes", email: "pedro.reyes@dict.gov.ph" },
-    { name: "Ella Ramos", email: "ella.ramos@dict.gov.ph" },
-  ],
-  PPMCAD: [
-    { name: "Ana Lim", email: "ana.lim@dict.gov.ph" },
-    { name: "Noel Bautista", email: "noel.bautista@dict.gov.ph" },
-  ],
-};
 
 type PolicyFormState = {
   policyNumber: string;
@@ -81,7 +66,7 @@ const defaultFormState: PolicyFormState = {
   title: "",
   type: TYPES[0],
   division: "PRAD",
-  status: "On Hold",
+  status: "On Progress",
   remarksComment: "",
   referenceLink: "",
 };
@@ -134,29 +119,25 @@ function getStatusSelectClass(status: PolicyStatus): string {
   }
 }
 
-function getAllowedStatusTransitions(current: PolicyStatus, canPublish: boolean): PolicyStatus[] {
-  const currentIndex = STATUSES.indexOf(current);
-  if (currentIndex < 0) {
-    return [current];
+function getWorkflowStateBadgeVariant(state?: string): "default" | "secondary" | "destructive" | "outline" {
+  switch (state) {
+    case "Draft":
+      return "secondary";
+    case "Collaborating":
+    case "For Review":
+      return "outline";
+    case "Under Review":
+      return "destructive";
+    case "Approved":
+    case "Published":
+      return "default";
+    case "Archived":
+      return "secondary";
+    default:
+      return "outline";
   }
-
-  // For Approved status, PPMED can publish
-  if (current === "Approved" && canPublish) {
-    return [current, "Published"];
-  }
-
-  const next = STATUSES[currentIndex + 1];
-  // Don't allow moving to Published unless user can publish (and current is Approved)
-  if (next === "Published") {
-    return [current];
-  }
-  
-  return next ? [current, next] : [current];
 }
 
-function isValidStatusTransition(from: PolicyStatus, to: PolicyStatus, canPublish: boolean): boolean {
-  return getAllowedStatusTransitions(from, canPublish).includes(to);
-}
 
 function inferPolicyType(policyNumber: string): PolicyType {
   if (policyNumber.startsWith("RA-")) return "Republic Act";
@@ -187,6 +168,8 @@ export default function PolicyTrackerPage() {
   const [newPolicyForm, setNewPolicyForm] = useState<PolicyFormState>(defaultFormState);
   const [newPolicyFiles, setNewPolicyFiles] = useState<File[]>([]);
   const [editVersionFile, setEditVersionFile] = useState<File | null>(null);
+  const [editVersionMarkAsFinal, setEditVersionMarkAsFinal] = useState(false);
+  const [divisionMembers, setDivisionMembers] = useState(buildEmptyDivisionMembers());
   const [shareDivision, setShareDivision] = useState<Division | "">("");
   const [shareMember, setShareMember] = useState("");
   const [shareNote, setShareNote] = useState("");
@@ -218,12 +201,18 @@ export default function PolicyTrackerPage() {
     });
   }, []);
 
+  useEffect(() => {
+    void fetchDivisionMembers()
+      .then((members) => setDivisionMembers(members))
+      .catch(() => setDivisionMembers(buildEmptyDivisionMembers()));
+  }, []);
+
   const getNotificationRecipients = (policy: ManagedPolicy, extraRecipients: string[] = []) => {
     return Array.from(new Set([...(policy.accessEmails ?? []), currentUser.email, ...extraRecipients]));
   };
 
   const getAccessRequestRecipients = (policy: ManagedPolicy): string[] => {
-    const divisionRecipients = divisionMembers[policy.division].map((member) => member.email);
+    const divisionRecipients = (divisionMembers[policy.division] ?? []).map((member) => member.email);
     const recipients = Array.from(new Set([...(policy.accessEmails ?? []), ...divisionRecipients]))
       .filter((email) => email.toLowerCase() !== currentUser.email.toLowerCase());
 
@@ -233,26 +222,6 @@ export default function PolicyTrackerPage() {
     }
 
     return recipients;
-  };
-
-  const registerPolicyAction = (policy: ManagedPolicy, action: string, type: "create" | "update" | "upload" | "download" | "status", recipients?: string[]) => {
-    appendActivity({
-      user: currentUser.identifier,
-      action,
-      policyTitle: getDisplayedPolicyTitle(policy),
-      type,
-    });
-
-    appendPolicyNotifications({
-      policyId: policy.id,
-      policyTitle: getDisplayedPolicyTitle(policy),
-      changeType: action,
-      recipients: recipients ?? getNotificationRecipients(policy),
-    });
-  };
-
-  const updatePolicy = (policyId: string, updater: (policy: ManagedPolicy) => ManagedPolicy) => {
-    setPolicies((current) => current.map((policy) => (policy.id === policyId ? updater(policy) : policy)));
   };
 
   const openDetails = (policy: ManagedPolicy) => {
@@ -277,6 +246,7 @@ export default function PolicyTrackerPage() {
       referenceLink: policy.referenceLink || "",
     });
     setEditVersionFile(null);
+    setEditVersionMarkAsFinal(false);
     setEditOpen(true);
   };
 
@@ -332,32 +302,6 @@ export default function PolicyTrackerPage() {
     setArchiveOpen(true);
   };
 
-  const startStatusChange = (policy: ManagedPolicy, nextStatus: PolicyStatus) => {
-    if (!canEditPolicyRecord(currentUser, policy)) {
-      toast({ title: "Access denied", description: "You do not have permission to change this policy status.", variant: "destructive" });
-      return;
-    }
-
-    setSelectedPolicyId(policy.id);
-    setEditForm({
-      policyNumber: policy.policyNumber,
-      title: policy.title,
-      type: policy.type,
-      division: policy.division,
-      status: nextStatus,
-      remarksComment: "",
-      referenceLink: policy.referenceLink || "",
-    });
-    setEditOpen(true);
-
-    if (nextStatus !== policy.status) {
-      toast({
-        title: "Remarks required",
-        description: "Status changed. Please add a remarks comment before saving.",
-      });
-    }
-  };
-
   const handleEditSave = async () => {
     if (!selectedPolicy || !editForm.title.trim() || !editForm.policyNumber.trim()) {
       return;
@@ -369,53 +313,60 @@ export default function PolicyTrackerPage() {
     }
 
     const previousDivision = selectedPolicy.division;
-    const previousStatus = selectedPolicy.status;
-    const statusChanged = editForm.status !== previousStatus;
-
-    if (!isValidStatusTransition(previousStatus, editForm.status, canPublishPolicy(currentUser))) {
-      toast({
-        title: "Invalid status transition",
-        description: editForm.status === "Published" 
-          ? "Only PPMED members can publish policies from Approved status."
-          : `You can only move from ${previousStatus} to the next status in sequence.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (statusChanged && !editForm.remarksComment.trim()) {
-      toast({
-        title: "Remarks required",
-        description: "Please provide remarks when changing status.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const notifiedMembers = editForm.division === previousDivision ? [] : divisionMembers[editForm.division].map((member) => member.name);
     const now = new Date().toISOString().slice(0, 10);
-    const editMessage = editForm.remarksComment.trim() || `Updated document details${editForm.division !== previousDivision ? ` and reassigned to ${editForm.division}` : ""}`;
+    const editMessage = editForm.remarksComment.trim() || "";
     let uploadedVersion = false;
     let uploadError = false;
 
-    const nextRemarks = statusChanged ? appendRemarkHistory(selectedPolicy, editMessage, now) : selectedPolicy.remarks;
-    const resolvedStatus = nextRemarks?.trim() ? editForm.status : "On Hold";
+    const nextRemarks = editMessage
+      ? appendRemarkHistory(selectedPolicy, editMessage, now)
+      : selectedPolicy.remarks;
     const editedPolicy: ManagedPolicy = {
       ...selectedPolicy,
       policyNumber: editForm.policyNumber.trim(),
       title: editForm.title.trim(),
       division: editForm.division,
-      status: resolvedStatus,
       archived: selectedPolicy.archived,
       type: inferPolicyType(editForm.policyNumber.trim()),
       referenceLink: editForm.referenceLink.trim() || undefined,
       lastUpdated: now,
       remarks: nextRemarks,
       lastEditedBy: currentUser.identifier,
-      accessEmails: Array.from(new Set([...(selectedPolicy.accessEmails ?? []), ...divisionMembers[editForm.division].map((member) => member.email)])),
+      accessEmails: selectedPolicy.accessEmails,
     };
-    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? editedPolicy : p)));
-    void updatePolicyInApi(selectedPolicy.id, editedPolicy);
+
+    try {
+      await PolicyAutomationService.updatePolicyDetails(selectedPolicy.id, {
+        policyNumber: editedPolicy.policyNumber,
+        title: editedPolicy.title,
+        division: editedPolicy.division,
+        type: editedPolicy.type,
+        referenceLink: editedPolicy.referenceLink,
+        remarks: editedPolicy.remarks,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to update policy",
+        description: error instanceof Error ? error.message : "Unable to save policy changes right now.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (editForm.division !== previousDivision) {
+      const newDivisionMembers = divisionMembers[editForm.division]
+        .map((member) => member.email)
+        .filter((email) => !(selectedPolicy.accessEmails ?? []).includes(email));
+
+      for (const email of newDivisionMembers) {
+        try {
+          await PolicyAutomationService.grantAccess(selectedPolicy.id, email);
+        } catch {
+          // Best-effort access grants; automation will still handle workflow state.
+        }
+      }
+    }
 
     if (editVersionFile) {
       const docType = getDocumentTypeFromFilename(editVersionFile.name);
@@ -428,8 +379,9 @@ export default function PolicyTrackerPage() {
           const currentVersion = allDocuments
             .filter((doc) => doc.policyId === selectedPolicy.id || doc.policyNumber === selectedPolicy.policyNumber)
             .reduce((max, doc) => Math.max(max, doc.version), 0);
+
           const nextDoc: RepositoryDocument = {
-            id: `DOC-${String(allDocuments.length + 1).padStart(3, "0")}`,
+            id: "",
             policyId: selectedPolicy.id,
             name: editVersionFile.name,
             policyNumber: editForm.policyNumber.trim(),
@@ -449,8 +401,20 @@ export default function PolicyTrackerPage() {
             remarks: `${now} | Uploaded as version ${currentVersion + 1}`,
             accessEmails: getNotificationRecipients(selectedPolicy),
           };
+
+          // 1) Persist repository document (local cache + /documents sync)
           saveDocumentsToStorage([nextDoc, ...allDocuments]);
           uploadedVersion = true;
+
+          // 2) Emit deterministic workflow event for smart status automation
+          //    - DOCUMENT_UPLOADED for non-final uploads
+          //    - FINAL_DOCUMENT_UPLOADED only when user explicitly marks final
+          await PolicyAutomationService.uploadDocument(
+            selectedPolicy.id,
+            editVersionFile.name,
+            editForm.division,
+            editVersionMarkAsFinal
+          );
         } catch {
           uploadError = true;
         }
@@ -459,28 +423,7 @@ export default function PolicyTrackerPage() {
 
     setEditOpen(false);
     setEditVersionFile(null);
-
-    registerPolicyAction(
-      {
-        ...selectedPolicy,
-        title: editForm.title.trim(),
-      },
-      statusChanged ? `Changed status to ${editForm.status}` : "Updated policy details",
-      statusChanged ? "status" : "update",
-      getNotificationRecipients(selectedPolicy)
-    );
-
-    if (uploadedVersion) {
-      registerPolicyAction(
-        {
-          ...selectedPolicy,
-          title: editForm.title.trim(),
-        },
-        "Uploaded a new document version",
-        "upload",
-        getNotificationRecipients(selectedPolicy)
-      );
-    }
+    setEditVersionMarkAsFinal(false);
 
     if (uploadError) {
       toast({
@@ -514,7 +457,7 @@ export default function PolicyTrackerPage() {
     }
 
     const initialRemarks = newPolicyForm.remarksComment.trim();
-    const initialStatus: PolicyStatus = initialRemarks ? newPolicyForm.status : "On Hold";
+    const initialStatus: PolicyStatus = "On Progress";
     const now = new Date().toISOString().slice(0, 10);
     const initialRemarkEntry = initialRemarks ? buildRemarkEntry(initialRemarks, now) : "";
 
@@ -533,17 +476,17 @@ export default function PolicyTrackerPage() {
       lastUpdated: now,
       uploadedBy: currentUser.identifier,
       lastEditedBy: currentUser.identifier,
-      accessEmails: Array.from(new Set([currentUser.email, ...divisionMembers[newPolicyForm.division].map((member) => member.email)])),
+      accessEmails: Array.from(new Set([currentUser.email, ...(divisionMembers[newPolicyForm.division] ?? []).map((member) => member.email)])),
       archived: false,
     };
 
     let savedPolicy: ManagedPolicy;
     try {
       savedPolicy = await createPolicyInApi(newPolicyPayload) as ManagedPolicy;
-    } catch {
+    } catch (error) {
       toast({
         title: "Failed to create policy",
-        description: "Could not save the policy to the server. Please try again.",
+        description: error instanceof Error ? error.message : "Could not save the policy to the server. Please try again.",
         variant: "destructive",
       });
       return;
@@ -555,7 +498,7 @@ export default function PolicyTrackerPage() {
       createdDocuments = await Promise.all(newPolicyFiles.map(async (file, index) => {
         const { dataUrl, mimeType } = await fileToDataUrl(file);
         return {
-          id: `DOC-${String(existingDocuments.length + index + 1).padStart(3, "0")}`,
+          id: "",
           policyId: savedPolicy.id,
           name: file.name,
           policyNumber: savedPolicy.policyNumber,
@@ -577,7 +520,21 @@ export default function PolicyTrackerPage() {
         };
       }));
 
+      // 1) Persist repository documents (local cache + /documents sync)
       saveDocumentsToStorage([...createdDocuments, ...existingDocuments]);
+
+      // 2) Emit deterministic workflow events for each uploaded version
+      //    Initial uploads are NOT "final" by default; finals are driven by the
+      //    "Mark as Final" checkbox in the Edit dialog.
+      for (const file of newPolicyFiles) {
+        const documentName = file.name;
+        await PolicyAutomationService.uploadDocument(
+          savedPolicy.id,
+          documentName,
+          savedPolicy.division,
+          false
+        );
+      }
     } catch {
       toast({
         title: "Unable to process uploaded file",
@@ -592,13 +549,10 @@ export default function PolicyTrackerPage() {
     setNewPolicyFiles([]);
     setPage(1);
 
-    registerPolicyAction(savedPolicy, "Created new policy record", "create", getNotificationRecipients(savedPolicy));
-    registerPolicyAction(savedPolicy, `Uploaded ${createdDocuments.length} document version(s)`, "upload", getNotificationRecipients(savedPolicy));
-
     toast({ title: "Policy added", description: `New policy ${savedPolicy.policyNumber} has been created.` });
   };
 
-  const handleShareSave = () => {
+  const handleShareSave = async () => {
     if (!selectedPolicy || !shareDivision || !shareMember) {
       return;
     }
@@ -613,29 +567,20 @@ export default function PolicyTrackerPage() {
       return;
     }
 
-    const now = new Date().toISOString().slice(0, 10);
-
-    const sharedPolicy: ManagedPolicy = {
-      ...selectedPolicy,
-      accessEmails: Array.from(new Set([...(selectedPolicy.accessEmails ?? []), memberRecord.email])),
-      lastUpdated: now,
-      remarks: appendRemarkHistory(selectedPolicy, shareNote.trim() || `Shared access with ${memberRecord.name} (${shareDivision})`, now),
-    };
-    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? sharedPolicy : p)));
-    void updatePolicyInApi(selectedPolicy.id, sharedPolicy);
-
-    registerPolicyAction(
-      selectedPolicy,
-      `Granted document access to ${memberRecord.name}`,
-      "update",
-      getNotificationRecipients(selectedPolicy, [memberRecord.email])
-    );
-
-    setShareOpen(false);
-    toast({ title: "Access updated", description: `${memberRecord.name} now has access to this document.` });
+    try {
+      await PolicyAutomationService.grantAccess(selectedPolicy.id, memberRecord.email);
+      setShareOpen(false);
+      toast({ title: "Access updated", description: `${memberRecord.name} now has access to this document.` });
+    } catch (error) {
+      toast({
+        title: "Failed to grant access",
+        description: error instanceof Error ? error.message : "Unable to grant access at this time.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleArchiveConfirm = () => {
+  const handleArchiveConfirm = async () => {
     if (!selectedPolicy) {
       return;
     }
@@ -647,35 +592,20 @@ export default function PolicyTrackerPage() {
 
     const now = new Date().toISOString().slice(0, 10);
 
-    const archivedPolicy: ManagedPolicy = {
-      ...selectedPolicy,
-      archived: true,
-      status: "On Hold",
-      lastUpdated: now,
-      remarks: appendRemarkHistory(selectedPolicy, "Archived and retained for records management", now),
-    };
-    setPolicies((current) => current.map((p) => (p.id === selectedPolicy.id ? archivedPolicy : p)));
-    void updatePolicyInApi(selectedPolicy.id, archivedPolicy);
-
-    const relatedDocuments = loadDocumentsFromStorage();
-    const archivedDocuments = relatedDocuments.map((doc) => {
-      if (doc.policyId !== selectedPolicy.id && doc.policyNumber !== selectedPolicy.policyNumber) {
-        return doc;
-      }
-
-      return {
-        ...doc,
-        status: "Archived" as const,
-        lastEdited: now,
-        remarks: `${now} | Archived with policy ${selectedPolicy.policyNumber}`,
-      };
-    });
-
-    saveDocumentsToStorage(archivedDocuments);
-    registerPolicyAction(selectedPolicy, "Archived policy and linked documents", "status", getNotificationRecipients(selectedPolicy));
+    try {
+      await PolicyAutomationService.archivePolicy(selectedPolicy.id);
+      await refreshAllDataFromApi();
+    } catch (error) {
+      toast({
+        title: "Failed to archive policy",
+        description: error instanceof Error ? error.message : "Unable to archive policy at this time.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setArchiveOpen(false);
-    toast({ title: "Document archived", description: "The policy and linked documents were archived and retained before deletion." });
+    toast({ title: "Policy archived", description: "The policy and linked documents were archived through workflow automation." });
   };
 
   return (
@@ -690,7 +620,7 @@ export default function PolicyTrackerPage() {
         </Button>
       </div>
       {!canCreatePolicy && (
-        <p className="text-xs text-muted-foreground">Only Policy Owner or Policy Access roles can add a policy.</p>
+        <p className="text-xs text-muted-foreground">Only authorized TrackHub roles can add a policy.</p>
       )}
 
       {/* Filters */}
@@ -735,6 +665,7 @@ export default function PolicyTrackerPage() {
                 <TableHead className="font-semibold">Policy ID No.</TableHead>
                 <TableHead className="font-semibold">Policy Title</TableHead>
                 <TableHead className="font-semibold">Responsible Division</TableHead>
+                <TableHead className="font-semibold">Workflow State</TableHead>
                 <TableHead className="font-semibold">Status</TableHead>
                 <TableHead className="font-semibold">Remarks</TableHead>
                 <TableHead className="font-semibold w-[160px]">External Links</TableHead>
@@ -753,24 +684,12 @@ export default function PolicyTrackerPage() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.division}</TableCell>
                   <TableCell>
-                    <div onClick={(event) => event.stopPropagation()}>
-                      <Select
-                        value={p.status}
-                        onValueChange={(value: PolicyStatus) => startStatusChange(p, value)}
-                        disabled={!canEditPolicyRecord(currentUser, p)}
-                      >
-                        <SelectTrigger className={`h-9 w-[160px] ${getStatusSelectClass(p.status)}`}>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {STATUSES.map((status) => (
-                            <SelectItem key={status} value={status} disabled={!getAllowedStatusTransitions(p.status, canPublishPolicy(currentUser)).includes(status)}>
-                              {status}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Badge variant={getWorkflowStateBadgeVariant(p.workflowState)}>
+                      {p.workflowState || "Draft"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={getStatusSelectClass(p.status)}>{p.status}</Badge>
                   </TableCell>
                   <TableCell>
                     <div className="max-w-[300px] max-h-24 overflow-y-auto pr-1 text-sm text-muted-foreground border border-border/50 rounded-md p-2 bg-muted/20 space-y-1">
@@ -864,7 +783,7 @@ export default function PolicyTrackerPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Document</DialogTitle>
-            <DialogDescription>Update policy title, responsible division, status, remarks, and external link.</DialogDescription>
+            <DialogDescription>Update policy title, responsible division, remarks, and external link.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -885,25 +804,6 @@ export default function PolicyTrackerPage() {
                   {divisions.map((division) => (
                     <SelectItem key={division} value={division}>{division}</SelectItem>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Status</Label>
-              <Select value={editForm.status} onValueChange={(value: PolicyStatus) => setEditForm((current) => ({ ...current, status: value }))}>
-                <SelectTrigger className={getStatusSelectClass(editForm.status)}>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                    {STATUSES.map((status) => {
-                      const currentStatus = selectedPolicy?.status ?? editForm.status;
-                      const allowed = getAllowedStatusTransitions(currentStatus, canPublishPolicy(currentUser));
-                      return (
-                        <SelectItem key={status} value={status} disabled={!allowed.includes(status)}>
-                          {status}
-                        </SelectItem>
-                      );
-                    })}
                 </SelectContent>
               </Select>
             </div>
@@ -932,13 +832,10 @@ export default function PolicyTrackerPage() {
                 className="max-h-28 overflow-y-auto"
                 value={editForm.remarksComment}
                 onChange={(event) => setEditForm((current) => ({ ...current, remarksComment: event.target.value }))}
-                placeholder={selectedPolicy && editForm.status !== selectedPolicy.status ? "Required when changing status" : "Locked until status changes"}
-                disabled={!selectedPolicy || editForm.status === selectedPolicy.status}
+                placeholder="Optional remarks for this update"
               />
               <p className="text-xs text-muted-foreground">
-                {selectedPolicy && editForm.status !== selectedPolicy.status
-                  ? "Remarks is required because status has changed."
-                  : "Remarks is locked until you change the status."}
+                "Optional remarks will be added to the audit history."
               </p>
             </div>
             <div className="space-y-2">
@@ -956,6 +853,19 @@ export default function PolicyTrackerPage() {
               <p className="text-xs text-muted-foreground">
                 {editVersionFile ? `Selected: ${editVersionFile.name}` : "Optional: upload a new version for this policy."}
               </p>
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  id="edit-version-final"
+                  type="checkbox"
+                  checked={editVersionMarkAsFinal}
+                  disabled={!editVersionFile}
+                  onChange={(e) => setEditVersionMarkAsFinal(e.target.checked)}
+                />
+                <Label htmlFor="edit-version-final" className="text-sm font-normal">
+                  Mark as Final (triggers FINAL_DOCUMENT_UPLOADED)
+                </Label>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -965,8 +875,7 @@ export default function PolicyTrackerPage() {
               onClick={handleEditSave}
               disabled={
                 !editForm.title.trim() ||
-                !editForm.policyNumber.trim() ||
-                (selectedPolicy ? editForm.status !== selectedPolicy.status && !editForm.remarksComment.trim() : false)
+                !editForm.policyNumber.trim()
               }
             >
               Save
@@ -1029,16 +938,8 @@ export default function PolicyTrackerPage() {
             </div>
             <div className="space-y-2">
               <Label>Status</Label>
-              <Select value={newPolicyForm.status} onValueChange={(value: PolicyStatus) => setNewPolicyForm((current) => ({ ...current, status: value }))}>
-                <SelectTrigger className={getStatusSelectClass(newPolicyForm.status)}>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((status) => (
-                    <SelectItem key={status} value={status}>{status}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Badge className={getStatusSelectClass("On Progress")}>On Progress</Badge>
+              <p className="text-xs text-muted-foreground">Status is set automatically by workflow automation.</p>
             </div>
             <div className="grid grid-cols-[140px_1fr] gap-3">
               <div className="space-y-2">

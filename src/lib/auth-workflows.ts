@@ -1,11 +1,11 @@
 import { apiRequest } from "@/lib/api/client";
-const USE_MOCK = true;
 
 type UserRecord = {
   identifier: string;
   email: string;
   name: string;
-  role: "OIC Director" | "Division Chief" | "Division Member" | "Admin" | "Policy Owner" | "Policy Access" | "Viewer";
+  role: "OIC Director" | "Division Chief" | "Division Member";
+  division?: "PRAD" | "PPDD" | "PPMED" | "PPMCAD";
 };
 
 export type AuthenticatedUser = UserRecord;
@@ -46,32 +46,32 @@ export function isPasswordStrong(password: string): boolean {
 }
 
 export async function authenticateUser(identifier: string, password: string): Promise<
-  | { ok: true; firstLogin: boolean; user: AuthenticatedUser }
+  | { ok: true; firstLogin: boolean; sessionExpiresAt: string; user: AuthenticatedUser }
   | { ok: false; message: string }
 > {
   try {
-    const response = await apiRequest<{ firstLogin: boolean; user: AuthenticatedUser }>("/auth/login", {
+    const response = await apiRequest<{ firstLogin: boolean; sessionExpiresAt: string; user: AuthenticatedUser }>("/auth/login", {
       method: "POST",
       body: { identifier, password },
     });
 
-    return { ok: true, firstLogin: response.firstLogin, user: response.user };
+    return { ok: true, firstLogin: response.firstLogin, sessionExpiresAt: response.sessionExpiresAt, user: response.user };
   } catch (error) {
     return { ok: false, message: asMessage(error) };
   }
 }
 
 export async function requestPasswordReset(email: string): Promise<
-  | { ok: true; expiresInMinutes: number; previewCode: string }
+  | { ok: true; expiresInMinutes: number; message: string }
   | { ok: false; message: string }
 > {
   try {
-    const response = await apiRequest<{ expiresInMinutes: number; previewCode: string }>("/auth/forgot-password/request-code", {
+    const response = await apiRequest<{ expiresInMinutes: number; message: string }>("/auth/forgot-password/request-code", {
       method: "POST",
       body: { email },
     });
 
-    return { ok: true, expiresInMinutes: response.expiresInMinutes, previewCode: response.previewCode };
+    return { ok: true, expiresInMinutes: response.expiresInMinutes, message: response.message };
   } catch (error) {
     return { ok: false, message: asMessage(error) };
   }
@@ -105,25 +105,16 @@ export async function updatePasswordFromReset(email: string, code: string, newPa
 
 //FIRST LOGIN WORKFLOW
 export async function requestFirstLoginCode(email: string): Promise<
-  | { ok: true; expiresInMinutes: number; previewCode: string }
+  | { ok: true; expiresInMinutes: number; message: string }
   | { ok: false; message: string }
 > {
-    if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 500));
-
-    return {
-      ok: true,
-      expiresInMinutes: 15,
-      previewCode: "123456", // demo code
-    };
-  }
   try {
-    const response = await apiRequest<{ expiresInMinutes: number; previewCode: string }>("/auth/first-login/request-code", {
+    const response = await apiRequest<{ expiresInMinutes: number; message: string }>("/auth/first-login/request-code", {
       method: "POST",
       body: { email },
     });
 
-    return { ok: true, expiresInMinutes: response.expiresInMinutes, previewCode: response.previewCode };
+    return { ok: true, expiresInMinutes: response.expiresInMinutes, message: response.message };
   } catch (error) {
     return { ok: false, message: asMessage(error) };
   }
@@ -133,15 +124,6 @@ export async function verifyFirstLoginCode(email: string,code: string): Promise<
 { ok: true } | 
 { ok: false; message: string }
 > {
-    if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 400));
-
-    if (code === "123456") {
-      return { ok: true };
-    }
-
-    return { ok: false, message: "Invalid demo code" };
-  }
   try {
     await apiRequest<{ ok: true } | ApiMessage>("/auth/first-login/verify-code", {
       method: "POST",
@@ -158,15 +140,6 @@ export async function completeFirstLoginPasswordChange(email: string, code: stri
   | { ok: true; email: string }
   | { ok: false; message: string }
 > {
-    if (USE_MOCK) {
-    await new Promise((r) => setTimeout(r, 500));
-
-    if (code !== "123456") {
-      return { ok: false, message: "Invalid code" };
-    }
-
-    return { ok: true, email };
-  }
   try {
     const response = await apiRequest<{ ok: true; email: string }>("/auth/first-login/complete", {
       method: "POST",
@@ -174,6 +147,18 @@ export async function completeFirstLoginPasswordChange(email: string, code: stri
     });
 
     return { ok: true, email: response.email };
+  } catch (error) {
+    return { ok: false, message: asMessage(error) };
+  }
+}
+
+export async function logoutUser(): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    await apiRequest<{ ok: true }>("/auth/logout", {
+      method: "POST",
+    });
+
+    return { ok: true };
   } catch (error) {
     return { ok: false, message: asMessage(error) };
   }

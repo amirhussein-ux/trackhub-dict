@@ -12,6 +12,7 @@ import {
   Archive,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -28,8 +29,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { logoutUser } from "@/lib/auth-workflows";
 import { clearCurrentUser, getCurrentUser } from "@/lib/user-session";
 import { canViewReports, canViewUserManagement } from "@/lib/access-control";
+import { ConfirmActionDialog } from "@/components/ConfirmActionDialog";
 import Logo from "@/assets/trackhublogo.png";
 
 
@@ -55,6 +58,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const isActive = (path: string) => location.pathname === path;
   const visibleAdminNav = adminNav.filter((item) => {
     if (item.title === "Reports") return canViewReports(currentUser);
@@ -64,6 +68,7 @@ export function AppSidebar() {
 
 
   return (
+    <>
     <Sidebar
         collapsible="icon"
         onMouseEnter={() => setOpen(true)}
@@ -187,8 +192,7 @@ export function AppSidebar() {
               hover:scale-[1.02] active:scale-[0.98]
             `}
             onClick={() => {
-              clearCurrentUser();
-              navigate("/");
+              setLogoutDialogOpen(true);
             }}
           >
             <LogOut className="h-4 w-4 flex-shrink-0" />
@@ -196,5 +200,19 @@ export function AppSidebar() {
           </Button>
       </SidebarFooter>
     </Sidebar>
+    <ConfirmActionDialog
+      open={logoutDialogOpen}
+      onOpenChange={setLogoutDialogOpen}
+      title="Log out of TrackHub?"
+      description="Your current session will end and you will be returned to the landing page."
+      confirmLabel="Log Out"
+      confirmVariant="destructive"
+      onConfirm={async () => {
+        await logoutUser();
+        clearCurrentUser();
+        navigate("/");
+      }}
+    />
+    </>
   );
 }

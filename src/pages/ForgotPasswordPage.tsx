@@ -63,7 +63,7 @@ export default function ForgotPasswordPage() {
 
     toast({
       title: "Reset instructions sent",
-      description: `A verification code was sent to ${email}. Demo code: ${response.previewCode}`,
+      description: response.message,
     });
     setStep("verify");
   };
