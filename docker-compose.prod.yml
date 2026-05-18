@@ -1,0 +1,180 @@
+version: '3.9'
+
+services:
+  # MongoDB - Production configuration
+  mongodb:
+    image: mongo:7.0-alpine
+    container_name: trackhub-mongodb
+    restart: on-failure
+    
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-trackhub}
+      MONGO_INITDB_ROOT_AUTH_MECHANISM: SCRAM-SHA-256
+    
+    # Internal only - not exposed to host
+    expose:
+      - "27017"
+    
+    # Data persistence with named volumes
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./mongodb-init.js:/docker-entrypoint-initdb.d/init.js:ro
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    
+    networks:
+      - trackhub-network
+    
+    user: "999:999"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Security
+    command: >
+      mongod
+      --auth
+      --replSet rs0
+      --bind_ip_all
+      --wiredTigerCacheSizeGB 0.25
+
+  # TrackHub Backend - Production configuration
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trackhub-backend
+    restart: on-failure
+    
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URL: mongodb://${MONGODB_USERNAME:-admin}:${MONGODB_PASSWORD:-changeme}@mongodb:27017/trackhub?authSource=admin
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_DIVISION_CHIEF_PASSWORD: ${SEED_DIVISION_CHIEF_PASSWORD}
+      SEED_DIVISION_MEMBER_PASSWORD: ${SEED_DIVISION_MEMBER_PASSWORD}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL}
+      SUPPORT_EMAIL_PASSWORD: ${SUPPORT_EMAIL_PASSWORD}
+      LOG_LEVEL: info
+    
+    # Expose only internally
+    expose:
+      - "5000"
+    
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    
+    networks:
+      - trackhub-network
+    
+    volumes:
+      - backend_logs:/app/logs
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # TrackHub Frontend - Production configuration
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trackhub-frontend
+    restart: on-failure
+    
+    environment:
+      VITE_API_URL: /api
+      NODE_ENV: production
+    
+    # Exposed port
+    ports:
+      - "80:80"
+    
+    depends_on:
+      backend:
+        condition: service_healthy
+    
+    networks:
+      - trackhub-network
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  trackhub-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  backend_logs:
+    driver: local

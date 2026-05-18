@@ -1,0 +1,152 @@
+version: '3.9'
+
+services:
+  # MongoDB - Document database for TrackHub
+  mongodb:
+    image: mongo:7.0-alpine
+    container_name: trackhub-mongodb
+    restart: unless-stopped
+    
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-changeme}
+      MONGO_INITDB_DATABASE: ${MONGODB_DATABASE:-trackhub}
+    
+    # Expose only internally to docker network - NOT publicly accessible
+    ports:
+      - "127.0.0.1:27017:27017"  # Only accessible from localhost
+    
+    # Persistent volume for database data
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    
+    # Internal network only
+    networks:
+      - trackhub-network
+    
+    # Security: non-root user
+    user: "999:999"
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # TrackHub Backend - Express.js API server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: trackhub-backend
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      MONGODB_URL: mongodb://${MONGODB_USERNAME:-admin}:${MONGODB_PASSWORD:-changeme}@mongodb:27017/trackhub
+      AUTH_SESSION_SECRET: ${AUTH_SESSION_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      SEED_DIVISION_CHIEF_PASSWORD: ${SEED_DIVISION_CHIEF_PASSWORD}
+      SEED_DIVISION_MEMBER_PASSWORD: ${SEED_DIVISION_MEMBER_PASSWORD}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL}
+      SUPPORT_EMAIL_PASSWORD: ${SUPPORT_EMAIL_PASSWORD}
+    
+    # Expose port internally to docker network
+    ports:
+      - "127.0.0.1:5000:5000"  # Only accessible from localhost for development
+    
+    # Depends on MongoDB being ready
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    
+    # Connect to docker network
+    networks:
+      - trackhub-network
+    
+    # Volumes for logs (optional)
+    volumes:
+      - backend_logs:/app/logs
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # TrackHub Frontend - Vite + React + Nginx
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trackhub-frontend
+    restart: unless-stopped
+    
+    # Environment variables for build-time substitution
+    environment:
+      VITE_API_URL: /api
+      NODE_ENV: production
+    
+    # Expose frontend port
+    ports:
+      - "80:80"
+    
+    # Depends on backend being ready
+    depends_on:
+      backend:
+        condition: service_healthy
+    
+    # Connect to docker network for internal communication
+    networks:
+      - trackhub-network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Docker network for inter-service communication
+networks:
+  trackhub-network:
+    driver: bridge
+
+# Persistent volumes for data persistence
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  backend_logs:
+    driver: local
