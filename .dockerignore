@@ -51,7 +51,6 @@ temp
 Dockerfile
 docker-compose.yml
 .dockerignore
-nginx.conf
 
 # Documentation
 README.md

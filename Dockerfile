@@ -11,7 +11,6 @@ COPY vite.config.ts ./
 COPY index.html ./
 COPY postcss.config.js ./
 COPY tailwind.config.ts ./
-COPY nginx.conf ./
 
 # Copy public assets if they exist
 COPY public ./public
