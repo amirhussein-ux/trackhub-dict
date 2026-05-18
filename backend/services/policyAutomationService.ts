@@ -56,6 +56,14 @@ export class PolicyAutomationService {
   }
 
   static async markReviewReady(policyId: string, triggeredBy: string): Promise<void> {
+    // Helper function to normalize identifiers for comparison
+    const normalize = (value: unknown): string => {
+      if (typeof value === "string") {
+        return value.trim().toLowerCase();
+      }
+      return String(value).trim().toLowerCase();
+    };
+
     // Primary lookup by Mongo _id
     let policy = await Policy.findById(policyId);
 
@@ -66,6 +74,11 @@ export class PolicyAutomationService {
 
     if (!policy) {
       throw new Error("Policy not found");
+    }
+
+    // Prevent self-approval: policy creator cannot submit their own policy for review
+    if (normalize(policy.createdBy) === normalize(triggeredBy)) {
+      throw new Error("You cannot submit your own policy for review. A colleague must submit it.");
     }
 
     const documentCount = await RepositoryDocument.countDocuments({ policyId });
@@ -188,6 +201,15 @@ export class PolicyAutomationService {
     nextAccessEmails.add(collaboratorEmail);
     policy.accessEmails = Array.from(nextAccessEmails);
     await policy.save();
+
+    // Also grant access to all documents associated with this policy
+    const documents = await RepositoryDocument.find({ policyId });
+    for (const doc of documents) {
+      const nextDocAccessEmails = new Set(doc.accessEmails ?? []);
+      nextDocAccessEmails.add(collaboratorEmail);
+      doc.accessEmails = Array.from(nextDocAccessEmails);
+      await doc.save();
+    }
 
     await this.triggerWorkflowEvent(policyId, "ACCESS_GRANTED", triggeredBy, {
       collaboratorEmail,

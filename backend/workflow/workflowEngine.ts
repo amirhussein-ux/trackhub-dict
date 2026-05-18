@@ -53,18 +53,16 @@ export async function processWorkflowEvent(event: WorkflowEvent): Promise<void> 
 
     const recipients = getNotificationRecipients(policy.accessEmails ?? [], event);
     if (recipients.length > 0) {
-      await Promise.all(
-        recipients.map((recipientEmail) =>
-          Notification.create({
-            policyId: policy.id,
-            policyTitle: policy.title,
-            changeType: getNotificationMessage(event.type, result.stateChange),
-            timestamp: ACTIVITY_TIMESTAMP_FORMAT(),
-            read: false,
-            recipientEmail,
-          })
-        )
-      );
+      // Bulk insert notifications instead of N individual creates (N+1 fix)
+      const notificationsToCreate = recipients.map((recipientEmail) => ({
+        policyId: policy.id,
+        policyTitle: policy.title,
+        changeType: getNotificationMessage(event.type, result.stateChange),
+        timestamp: ACTIVITY_TIMESTAMP_FORMAT(),
+        read: false,
+        recipientEmail,
+      }));
+      await Notification.insertMany(notificationsToCreate);
     }
 
     logger.info(

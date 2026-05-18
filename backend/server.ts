@@ -2,6 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import fs from "fs";
+import helmet from "helmet";
 import path from "path";
 import connectDB from "./config/db";
 import { logger } from "./lib/logger";
@@ -39,12 +40,82 @@ const envPath = envCandidates.find((candidate) => fs.existsSync(candidate));
 
 dotenv.config(envPath ? { path: envPath } : undefined);
 
+// Strict environment validation - fail fast on startup
+const validateEnvironment = () => {
+  const nodeEnv = process.env.NODE_ENV;
+  const validEnvs = ["development", "production", "test"];
+
+  if (!nodeEnv || !validEnvs.includes(nodeEnv)) {
+    throw new Error(
+      `Invalid NODE_ENV: "${nodeEnv}". Must be one of: ${validEnvs.join(", ")}`
+    );
+  }
+
+  const frontendUrl = process.env.FRONTEND_URL;
+  if (!frontendUrl) {
+    throw new Error("FRONTEND_URL environment variable is required");
+  }
+
+  const authSessionSecret = process.env.AUTH_SESSION_SECRET;
+  if (!authSessionSecret || authSessionSecret.length < 32) {
+    throw new Error(
+      "AUTH_SESSION_SECRET environment variable is required and must be at least 32 characters"
+    );
+  }
+
+  const port = process.env.PORT;
+  if (port && (isNaN(Number(port)) || Number(port) < 1 || Number(port) > 65535)) {
+    throw new Error(
+      `Invalid PORT: "${port}". Must be a number between 1 and 65535`
+    );
+  }
+
+  logger.info(
+    { nodeEnv, frontendUrl },
+    "Environment validation passed"
+  );
+};
+
+validateEnvironment();
+
 const app = express();
 
 const frontendOrigin = process.env.FRONTEND_URL ?? "http://localhost:8080";
 
+// Security headers - apply before CORS
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        fontSrc: ["'self'", "data:"],
+        connectSrc: ["'self'", frontendOrigin],
+      },
+    },
+    hsts: {
+      maxAge: 31536000, // 1 year
+      includeSubDomains: true,
+      preload: true,
+    },
+    frameguard: { action: "deny" },
+    noSniff: true,
+    xssFilter: true,
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  })
+);
+
 // Enable CORS so the React frontend can call this API.
-app.use(cors({ origin: frontendOrigin, credentials: true }));
+// Important: credentials: true allows cookies to be sent/received
+app.use(cors({ 
+  origin: frontendOrigin, 
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  maxAge: 86400,
+}));
 
 // Parse incoming JSON request bodies.
 app.use(express.json({ limit: "20mb" }));
@@ -55,8 +126,29 @@ app.use(attachRequestContext);
 app.use("/api", apiLimiter);
 
 // Basic health route for quick backend checks.
-app.get("/api/health", (_req, res) => {
-  res.status(200).json({ message: "Backend is running." });
+app.get("/api/health", async (_req, res) => {
+  try {
+    const memUsage = process.memoryUsage();
+    const health = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV,
+      memory: {
+        heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024),
+      },
+    };
+
+    res.status(200).json(health);
+  } catch (error) {
+    logger.error({ err: error }, "Health check failed");
+    res.status(503).json({
+      status: "unhealthy",
+      message: "Backend health check failed",
+    });
+  }
 });
 
 app.use("/api/auth", authLimiter, authRoutes);

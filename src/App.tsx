@@ -25,6 +25,7 @@ import PlaceholderPage from "./pages/PlaceholderPage";
 import NotFound from "./pages/NotFound";
 import { apiRequest } from "./lib/api/client";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { setCurrentUser } from "./lib/user-session";
 
 import { useEffect } from "react";
 
@@ -33,6 +34,42 @@ const queryClient = new QueryClient();
 function SessionEagerValidator(): null {
   const location = useLocation();
 
+  // Restore session on app mount - directly call API without error redirect handler
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const response = await fetch("/api/auth/me", { 
+          method: "GET",
+          credentials: "include" // Include httpOnly cookies
+        });
+        
+        if (!response.ok) {
+          // 401 is expected if session expired; just skip restoration
+          return;
+        }
+
+        const data = (await response.json()) as {
+          user?: {
+            identifier: string;
+            email: string;
+            name: string;
+            role: "OIC Director" | "Division Chief" | "Division Member";
+            division?: "PRAD" | "PPDD" | "PPMED" | "PPMCAD";
+          };
+        };
+
+        if (data.user) {
+          setCurrentUser(data.user);
+        }
+      } catch {
+        // Network error; user remains as guest
+      }
+    };
+    
+    void restoreSession();
+  }, []);
+
+  // Validate session on route changes
   useEffect(() => {
     const path = location.pathname;
 

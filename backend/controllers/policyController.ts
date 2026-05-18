@@ -17,6 +17,11 @@ import {
 import { emitWorkflowEvent } from "../workflow/workflowEvents";
 import { PolicyAutomationService } from "../services/policyAutomationService";
 
+// Maximum search query length to prevent DOS attacks via complex regex
+const MAX_SEARCH_LENGTH = 100;
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
 // Create a new policy record.
 export const createPolicy = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -65,7 +70,12 @@ export const getPolicies = async (req: Request, res: Response, next: NextFunctio
       return;
     }
 
-    const { division, status, type, search, includeArchived } = req.query;
+    const { division, status, type, search, includeArchived, page = "1", limit = String(DEFAULT_PAGE_SIZE) } = req.query;
+
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+    const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(String(limit), 10) || DEFAULT_PAGE_SIZE));
+    const skip = (pageNum - 1) * pageSize;
 
     const filter: Record<string, unknown> = {};
 
@@ -77,12 +87,22 @@ export const getPolicies = async (req: Request, res: Response, next: NextFunctio
       filter.archived = { $ne: true };
     }
 
-    if (search && typeof search === "string" && search.trim()) {
-      const escapedSearch = escapeRegex(search.trim());
-      filter.$or = [
-        { title: { $regex: escapedSearch, $options: "i" } },
-        { policyNumber: { $regex: escapedSearch, $options: "i" } },
-      ];
+    // Validate search input length to prevent DOS
+    if (search && typeof search === "string") {
+      const searchTrimmed = search.trim();
+      if (searchTrimmed.length > MAX_SEARCH_LENGTH) {
+        res.status(400).json({
+          message: `Search query exceeds maximum length of ${MAX_SEARCH_LENGTH} characters`,
+        });
+        return;
+      }
+      if (searchTrimmed) {
+        const escapedSearch = escapeRegex(searchTrimmed);
+        filter.$or = [
+          { title: { $regex: escapedSearch, $options: "i" } },
+          { policyNumber: { $regex: escapedSearch, $options: "i" } },
+        ];
+      }
     }
 
     const accessFilter = isPrivilegedUser(currentUser)
@@ -96,10 +116,25 @@ export const getPolicies = async (req: Request, res: Response, next: NextFunctio
           ],
         };
 
-    const policies = isPrivilegedUser(currentUser)
-      ? await Policy.find(filter).sort({ createdAt: -1 })
-      : await Policy.find({ $and: [filter, accessFilter] }).sort({ createdAt: -1 });
-    res.status(200).json(policies);
+    const combinedFilter = { $and: [filter, accessFilter] };
+
+    const policies = await Policy.find(combinedFilter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize);
+
+    const total = await Policy.countDocuments(combinedFilter);
+    const totalPages = Math.ceil(total / pageSize);
+
+    res.status(200).json({
+      data: policies,
+      pagination: {
+        page: pageNum,
+        limit: pageSize,
+        total,
+        totalPages,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -309,12 +344,14 @@ export const markReviewReady = async (req: Request, res: Response, next: NextFun
 };
 
 export const approvePolicy = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  let currentUser;
+  let currentUser: ReturnType<typeof getAuthenticatedUser> = null;
   try {
     currentUser = getAuthenticatedUser(req, res);
     if (!currentUser) {
       return;
     }
+    // Type narrowing: currentUser is guaranteed to be non-null after the guard above
+    const user = currentUser;
 
     const policy = await Policy.findById(req.params.id);
     if (!policy) {
@@ -324,7 +361,7 @@ export const approvePolicy = async (req: Request, res: Response, next: NextFunct
 
     // Check if user is in the approval chain for this policy
     const isApprover = policy.approvalChain?.some(
-      (entry) => entry.approverEmail?.toLowerCase() === currentUser.email.toLowerCase()
+      (entry) => entry.approverEmail?.toLowerCase() === user.email.toLowerCase()
     );
     if (!isApprover) {
       res.status(403).json({ message: "You are not an approver for this policy." });
@@ -335,14 +372,14 @@ export const approvePolicy = async (req: Request, res: Response, next: NextFunct
       await PolicyAutomationService.grantApproval(
         policy.id,
         req.body.approverEmail,
-        currentUser.email
+        user.email
       );
     } catch (serviceError) {
       req.log?.error(
         { 
           err: serviceError,
           policyId: policy.id,
-          userId: currentUser.id,
+          userId: user.id,
           approverEmail: req.body.approverEmail,
           errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError)
         },
@@ -366,12 +403,14 @@ export const approvePolicy = async (req: Request, res: Response, next: NextFunct
 };
 
 export const rejectPolicy = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  let currentUser;
+  let currentUser: ReturnType<typeof getAuthenticatedUser> = null;
   try {
     currentUser = getAuthenticatedUser(req, res);
     if (!currentUser) {
       return;
     }
+    // Type narrowing: currentUser is guaranteed to be non-null after the guard above
+    const user = currentUser;
 
     const policy = await Policy.findById(req.params.id);
     if (!policy) {
@@ -381,7 +420,7 @@ export const rejectPolicy = async (req: Request, res: Response, next: NextFuncti
 
     // Check if user is in the approval chain for this policy
     const isApprover = policy.approvalChain?.some(
-      (entry) => entry.approverEmail?.toLowerCase() === currentUser.email.toLowerCase()
+      (entry) => entry.approverEmail?.toLowerCase() === user.email.toLowerCase()
     );
     if (!isApprover) {
       res.status(403).json({ message: "You are not an approver for this policy." });
@@ -393,14 +432,14 @@ export const rejectPolicy = async (req: Request, res: Response, next: NextFuncti
         policy.id,
         req.body.approverEmail,
         req.body.rejectionReason,
-        currentUser.email
+        user.email
       );
     } catch (serviceError) {
       req.log?.error(
         { 
           err: serviceError,
           policyId: policy.id,
-          userId: currentUser.id,
+          userId: user.id,
           approverEmail: req.body.approverEmail,
           errorMessage: serviceError instanceof Error ? serviceError.message : String(serviceError)
         },

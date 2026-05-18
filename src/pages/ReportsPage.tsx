@@ -32,9 +32,10 @@ const statusColors: Record<PolicyStatus, string> = {
   "Under Review": "hsl(25, 95%, 53%)",
   "On Progress": "hsl(45, 93%, 47%)",
   "On Hold": "hsl(0, 84%, 60%)",
+  Published: "hsl(221, 83%, 53%)",
 };
 
-const allStatuses: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold"];
+const allStatuses: PolicyStatus[] = ["Approved", "Under Review", "On Progress", "On Hold", "Published"];
 const allDivisions: Division[] = ["PRAD", "PPDD", "PPMED", "PPMCAD"];
 
 function formatDate(value: string): string {
