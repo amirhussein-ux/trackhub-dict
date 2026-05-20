@@ -9,6 +9,7 @@ import { logger } from "./lib/logger";
 import errorHandler from "./middleware/errorHandler";
 import notFound from "./middleware/notFound";
 import { attachRequestContext } from "./middleware/requestContext";
+import requestTimingMiddleware from "./middleware/requestTiming";
 import {
   aiGenerationLimiter,
   apiLimiter,
@@ -121,6 +122,7 @@ app.use(cors({
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 app.use(attachRequestContext);
+app.use(requestTimingMiddleware);
 
 // Baseline abuse protection for all API traffic.
 app.use("/api", apiLimiter);

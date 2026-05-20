@@ -45,10 +45,22 @@ const normalize = (value: unknown): string => {
 
 const elevatedRoles = new Set<UserRole>(["OIC Director", "Division Chief"]);
 
+/**
+ * Check if a user has elevated privileges (admin roles)
+ * @param user - The authenticated user
+ * @returns true if user is OIC Director or Division Chief
+ */
 export function isPrivilegedUser(user: SessionUser): boolean {
   return elevatedRoles.has(user.role);
 }
 
+/**
+ * Check if a user created or uploaded a policy
+ * Compares both identifier and name for flexibility
+ * @param user - The authenticated user
+ * @param policy - The policy to check ownership of
+ * @returns true if user created or uploaded the policy
+ */
 export function isPolicyOwner(user: SessionUser, policy: PolicyAccessRecord): boolean {
   const byIdentifier = normalize(user.identifier);
   const byName = normalize(user.name);
@@ -58,6 +70,17 @@ export function isPolicyOwner(user: SessionUser, policy: PolicyAccessRecord): bo
   return createdBy === byIdentifier || uploadedBy === byIdentifier || createdBy === byName || uploadedBy === byName;
 }
 
+/**
+ * Determine if a user can access a specific policy
+ * Access is granted if:
+ * 1. User is privileged (admin)
+ * 2. User is policy owner
+ * 3. User's division matches policy division
+ * 4. User is in policy's access email list
+ * @param user - The authenticated user
+ * @param policy - The policy to check access for
+ * @returns true if user can access the policy
+ */
 export function canAccessPolicy(user: SessionUser, policy: PolicyAccessRecord): boolean {
   if (isPrivilegedUser(user)) {
     return true;
@@ -74,6 +97,13 @@ export function canAccessPolicy(user: SessionUser, policy: PolicyAccessRecord): 
   return (policy.accessEmails ?? []).map((email) => normalize(email)).includes(normalize(user.email));
 }
 
+/**
+ * Determine if a user can edit a specific policy
+ * Edit access is more restrictive than read access
+ * @param user - The authenticated user
+ * @param policy - The policy to check edit access for
+ * @returns true if user can edit the policy
+ */
 export function canEditPolicy(user: SessionUser, policy: PolicyAccessRecord): boolean {
   if (isPrivilegedUser(user) || isPolicyOwner(user, policy)) {
     return true;
@@ -82,18 +112,44 @@ export function canEditPolicy(user: SessionUser, policy: PolicyAccessRecord): bo
   return (policy.accessEmails ?? []).map((email) => normalize(email)).includes(normalize(user.email));
 }
 
+/**
+ * Determine if a user can grant access to a policy
+ * Only admins and policy owners can grant access
+ * @param user - The authenticated user
+ * @param policy - The policy to check access grant permission for
+ * @returns true if user can grant access to others
+ */
 export function canGrantPolicyAccess(user: SessionUser, policy: PolicyAccessRecord): boolean {
   return isPrivilegedUser(user) || isPolicyOwner(user, policy);
 }
 
+/**
+ * Determine if a user can archive a policy
+ * Only OIC Director and Division Chief can archive
+ * @param user - The authenticated user
+ * @returns true if user can archive policies
+ */
 export function canArchivePolicy(user: SessionUser): boolean {
   return user.role === "OIC Director" || user.role === "Division Chief";
 }
 
+/**
+ * Determine if a user can review a policy
+ * Admin and policy owners can review
+ * @param user - The authenticated user
+ * @param policy - The policy to check review permission for
+ * @returns true if user can review the policy
+ */
 export function canReviewPolicy(user: SessionUser, policy: PolicyAccessRecord): boolean {
   return isPrivilegedUser(user) || isPolicyOwner(user, policy);
 }
 
+/**
+ * Determine if a user can approve policies in workflow
+ * Only OIC Director and Division Chief can approve
+ * @param user - The authenticated user
+ * @returns true if user can approve policies
+ */
 export function canApprovePolicy(user: SessionUser): boolean {
   return user.role === "OIC Director" || user.role === "Division Chief";
 }

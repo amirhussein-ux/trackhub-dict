@@ -16,6 +16,9 @@ const activityLogSchema = new Schema(
 
 activityLogSchema.index({ createdAt: -1 });
 activityLogSchema.index({ user: 1, createdAt: -1 });
+activityLogSchema.index({ type: 1, createdAt: -1 });
+activityLogSchema.index({ policyTitle: 1 });
+activityLogSchema.index({ user: 1, type: 1, createdAt: -1 });
 
 const ActivityLog = model("ActivityLog", activityLogSchema);
 

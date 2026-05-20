@@ -4,6 +4,11 @@ import { type MongoEntity } from "@/lib/api/types";
 import { type Policy } from "@/lib/mock-data.ts";
 
 type PolicyDto = MongoEntity<Omit<Policy, "id">>;
+type PoliciesApiResponse =
+  | PolicyDto[]
+  | {
+      data?: PolicyDto[];
+    };
 
 let policyCache: Policy[] = [];
 let isHydrated = false;
@@ -54,8 +59,9 @@ const toPolicyPayload = (policy: Policy): Omit<Policy, "id"> & { archived?: bool
 };
 
 async function fetchPoliciesFromApi(): Promise<Policy[]> {
-  const response = await apiRequest<PolicyDto[]>("/policies?includeArchived=true");
-  return response.map(toPolicy);
+  const response = await apiRequest<PoliciesApiResponse>("/policies?includeArchived=true");
+  const policies = Array.isArray(response) ? response : response.data ?? [];
+  return policies.map(toPolicy);
 }
 
 export async function refreshPoliciesFromApi(): Promise<Policy[]> {

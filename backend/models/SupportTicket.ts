@@ -38,6 +38,9 @@ const supportTicketSchema = new Schema(
 
 supportTicketSchema.index({ createdAt: -1 });
 supportTicketSchema.index({ email: 1, createdAt: -1 });
+supportTicketSchema.index({ status: 1, submittedAt: -1 });
+supportTicketSchema.index({ category: 1, status: 1 });
+supportTicketSchema.index({ submittedByUserId: 1, createdAt: -1 });
 
 const SupportTicket = model("SupportTicket", supportTicketSchema);
 

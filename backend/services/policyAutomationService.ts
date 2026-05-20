@@ -4,6 +4,7 @@ import User from "../models/User";
 import { emitWorkflowEvent } from "../workflow/workflowEvents";
 import { WorkflowEventType } from "../workflow/workflowTypes";
 import { logger } from "../lib/logger";
+import { validateNoSelfApproval, normalizeIdentifier, validateCollaborators } from "../utils/workflowValidation";
 
 type ApprovalEntry = {
   approverEmail: string;
@@ -56,14 +57,6 @@ export class PolicyAutomationService {
   }
 
   static async markReviewReady(policyId: string, triggeredBy: string): Promise<void> {
-    // Helper function to normalize identifiers for comparison
-    const normalize = (value: unknown): string => {
-      if (typeof value === "string") {
-        return value.trim().toLowerCase();
-      }
-      return String(value).trim().toLowerCase();
-    };
-
     // Primary lookup by Mongo _id
     let policy = await Policy.findById(policyId);
 
@@ -76,19 +69,16 @@ export class PolicyAutomationService {
       throw new Error("Policy not found");
     }
 
-    // Prevent self-approval: policy creator cannot submit their own policy for review
-    if (normalize(policy.createdBy) === normalize(triggeredBy)) {
-      throw new Error("You cannot submit your own policy for review. A colleague must submit it.");
-    }
+    // Use centralized validation: prevent self-approval
+    validateNoSelfApproval(policy.createdBy, triggeredBy);
 
     const documentCount = await RepositoryDocument.countDocuments({ policyId });
     if (documentCount === 0) {
       throw new Error("At least one document version must be uploaded before review submission.");
     }
 
-    if (!policy.accessEmails || policy.accessEmails.length === 0) {
-      throw new Error("At least one collaborator must be assigned before review submission.");
-    }
+    // Use centralized validation: validate collaborators
+    validateCollaborators(policy.createdBy, policy.accessEmails ?? []);
 
     const divisionReviewers = await User.find({
       division: policy.division,
