@@ -12,9 +12,9 @@ export const requestTimingMiddleware = (req: Request, res: Response, next: NextF
   const startTime = Date.now();
 
   // Capture the original res.end to measure total response time
-  const originalEnd = res.end;
+  const originalEnd = res.end.bind(res);
 
-  res.end = function (chunk?: BufferEncoding | string | null, encoding?: BufferEncoding | (() => void) | string, cb?: (() => void) | string): Response {
+  res.end = ((...args: Parameters<Response["end"]>) => {
     const duration = Date.now() - startTime;
     const method = req.method;
     const path = req.path;
@@ -25,7 +25,7 @@ export const requestTimingMiddleware = (req: Request, res: Response, next: NextF
       path,
       statusCode,
       durationMs: duration,
-      requestId: req.id || "unknown",
+      requestId: req.requestId || "unknown",
     };
 
     // Log all requests at info level, with slower requests at warn level
@@ -38,15 +38,8 @@ export const requestTimingMiddleware = (req: Request, res: Response, next: NextF
       logger.info(logData, `${method} ${path} completed in ${duration}ms`);
     }
 
-    // Call original end method with proper types
-    if (typeof chunk === "function") {
-      return originalEnd.call(res, chunk as () => void) as Response;
-    }
-    if (typeof encoding === "function") {
-      return originalEnd.call(res, chunk, encoding as () => void) as Response;
-    }
-    return originalEnd.call(res, chunk, encoding, cb) as Response;
-  };
+    return originalEnd(...args);
+  }) as Response["end"];
 
   next();
 };
