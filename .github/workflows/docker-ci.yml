@@ -82,29 +82,43 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-dist
-          path: dist/
-
       - name: Deploy frontend to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
+          RENDER_FRONTEND_SERVICE_ID: ${{ secrets.RENDER_FRONTEND_SERVICE_ID }}
         run: |
-          curl --fail -X POST \
-            "https://api.render.com/deploy/${{ secrets.RENDER_FRONTEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }}"
+          API_KEY="${RENDER_API_KEY:-$RENDER_DEPLOY_KEY}"
+          if [ -z "$API_KEY" ]; then
+            echo "Missing Render API key. Set RENDER_API_KEY (preferred) or RENDER_DEPLOY_KEY."
+            exit 1
+          fi
+
+          curl --fail --show-error --silent \
+            -X POST "https://api.render.com/v1/services/${RENDER_FRONTEND_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}'
 
   deploy-backend:
     needs: build-backend
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Deploy backend to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
+          RENDER_BACKEND_SERVICE_ID: ${{ secrets.RENDER_BACKEND_SERVICE_ID }}
         run: |
-          curl --fail -X POST \
-            "https://api.render.com/deploy/${{ secrets.RENDER_BACKEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }}"
+          API_KEY="${RENDER_API_KEY:-$RENDER_DEPLOY_KEY}"
+          if [ -z "$API_KEY" ]; then
+            echo "Missing Render API key. Set RENDER_API_KEY (preferred) or RENDER_DEPLOY_KEY."
+            exit 1
+          fi
+
+          curl --fail --show-error --silent \
+            -X POST "https://api.render.com/v1/services/${RENDER_BACKEND_SERVICE_ID}/deploys" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"clearCache":"do_not_clear"}'
