@@ -119,7 +119,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
         } catch {
           // ignore
         }
-        window.location.href = "/login";
+        window.location.href = "/";
       }
     }
 
@@ -130,7 +130,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       } catch {
         // ignore
       }
-      window.location.href = "/login";
+      window.location.href = "/";
     }
 
     throw new ApiRequestError(sanitizeApiMessage(response.status, rawMessage), {

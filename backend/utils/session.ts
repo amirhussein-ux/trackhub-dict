@@ -66,20 +66,24 @@ export function createSessionToken(userId: string): { token: string; expiresAt: 
 }
 
 export function setSessionCookie(res: Response, token: string, expiresAt: Date): void {
+  const isProduction = process.env.NODE_ENV === "production";
+
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
     expires: expiresAt,
     path: "/",
   });
 }
 
 export function clearSessionCookie(res: Response): void {
+  const isProduction = process.env.NODE_ENV === "production";
+
   res.clearCookie(SESSION_COOKIE_NAME, {
     httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    sameSite: isProduction ? "none" : "lax",
+    secure: isProduction,
     path: "/",
   });
 }
