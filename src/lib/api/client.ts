@@ -105,11 +105,15 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
     // Backend is source-of-truth for session validity.
     if (response.status === 401) {
-      const isOnLoginPage =
+      const isOnPublicRoute =
         typeof window !== "undefined" &&
-        (window.location.pathname === "/login" || window.location.pathname === "/");
+        (window.location.pathname === "/" ||
+          window.location.pathname === "/landing" ||
+          window.location.pathname === "/login" ||
+          window.location.pathname === "/forgot-password" ||
+          window.location.pathname === "/first-login-password-change");
 
-      if (!isAuthFlowRequest && !isOnLoginPage) {
+      if (!isAuthFlowRequest && !isOnPublicRoute) {
         try {
           window.sessionStorage.clear();
         } catch {
