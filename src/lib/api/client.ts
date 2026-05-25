@@ -93,14 +93,30 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       // Ignore payload parse failures and keep default message.
     }
 
+    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const isAuthFlowRequest =
+      normalizedPath === "/auth/login" ||
+      normalizedPath === "/auth/forgot-password/request-code" ||
+      normalizedPath === "/auth/forgot-password/verify-code" ||
+      normalizedPath === "/auth/forgot-password/reset" ||
+      normalizedPath === "/auth/first-login/request-code" ||
+      normalizedPath === "/auth/first-login/verify-code" ||
+      normalizedPath === "/auth/first-login/complete";
+
     // Backend is source-of-truth for session validity.
     if (response.status === 401) {
-      try {
-        window.sessionStorage.clear();
-      } catch {
-        // ignore
+      const isOnLoginPage =
+        typeof window !== "undefined" &&
+        (window.location.pathname === "/login" || window.location.pathname === "/");
+
+      if (!isAuthFlowRequest && !isOnLoginPage) {
+        try {
+          window.sessionStorage.clear();
+        } catch {
+          // ignore
+        }
+        window.location.href = "/login";
       }
-      window.location.href = "/login";
     }
 
     if (response.status === 403 && rawCode === "ACCOUNT_INACTIVE") {
