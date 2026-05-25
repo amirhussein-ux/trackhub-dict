@@ -94,11 +94,8 @@ jobs:
       - name: Deploy frontend to Render
         run: |
           curl --fail -X POST \
-            https://api.render.com/deploy/srv-${{ secrets.RENDER_FRONTEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }} \
+            "https://api.render.com/deploy/${{ secrets.RENDER_FRONTEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }}" \
             -H "Content-Type: application/json"
-        env:
-          RENDER_FRONTEND_SERVICE_ID: ${{ secrets.RENDER_FRONTEND_SERVICE_ID }}
-          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
 
   deploy-backend:
     needs: build-backend
@@ -111,8 +108,5 @@ jobs:
       - name: Deploy backend to Render
         run: |
           curl --fail -X POST \
-            https://api.render.com/deploy/srv-${{ secrets.RENDER_BACKEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }} \
+            "https://api.render.com/deploy/${{ secrets.RENDER_BACKEND_SERVICE_ID }}?key=${{ secrets.RENDER_DEPLOY_KEY }}" \
             -H "Content-Type: application/json"
-        env:
-          RENDER_BACKEND_SERVICE_ID: ${{ secrets.RENDER_BACKEND_SERVICE_ID }}
-          RENDER_DEPLOY_KEY: ${{ secrets.RENDER_DEPLOY_KEY }}
