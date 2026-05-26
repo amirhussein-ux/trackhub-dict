@@ -189,3 +189,36 @@ export function canPublishPolicy(user: SessionUser): boolean {
   if (isGuestUser(user)) return false;
   return isPpmedMember(user);
 }
+
+type PolicyActionPolicy = Pick<Policy, "createdBy" | "uploadedBy" | "workflowState" | "approvalChain">;
+
+export function canGrantCollaboratorAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
+  return isPolicyOwner(user, policy) && (policy.workflowState ?? "Draft") === "Draft";
+}
+
+export function canSendForReviewAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
+  return isPolicyOwner(user, policy) && policy.workflowState === "Collaborating";
+}
+
+export function canApprovePolicyAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
+  const state = policy.workflowState ?? "Draft";
+  if (state !== "For Review" && state !== "Under Review") {
+    return false;
+  }
+
+  if (!isOicDirector(user) && !isDivisionChief(user)) {
+    return false;
+  }
+
+  const approvalChain = policy.approvalChain ?? [];
+  return approvalChain.some((entry) => normalizeText(entry.approverEmail) === normalizeText(user.email));
+}
+
+export function canPublishPolicyAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
+  return canPublishPolicy(user) && policy.workflowState === "Approved";
+}
+
+export function canArchivePolicyAction(user: SessionUser, _policy: PolicyActionPolicy): boolean {
+  if (isGuestUser(user)) return false;
+  return isOicDirector(user) || isDivisionChief(user);
+}

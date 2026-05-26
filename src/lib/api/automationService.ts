@@ -30,12 +30,13 @@ export class PolicyAutomationService {
   static async rejectApproval(
     policyId: string,
     approverEmail: string,
-    rejectionReason: string
+    rejectionReason: string,
+    type: "return" | "reject" = "return"
   ): Promise<void> {
     try {
       await apiRequest(`/policies/${policyId}/actions/reject`, {
         method: "POST",
-        body: { approverEmail, rejectionReason },
+        body: { approverEmail, rejectionReason, type },
       });
       await refreshPoliciesFromApi();
     } catch (error) {

@@ -105,6 +105,9 @@ export default function DashboardLayout() {
                   </SheetHeader>
                   <ScrollArea className="h-[calc(100vh-80px)]">
                     <div className="p-2">
+                      {notifications.length === 0 ? (
+                        <p className="px-2 py-6 text-sm text-muted-foreground">You are all caught up — no new notifications.</p>
+                      ) : null}
                       {Object.entries(grouped).map(([label, items]) =>
                         items.length > 0 ? (
                           <div key={label} className="mb-4">

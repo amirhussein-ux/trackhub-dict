@@ -61,7 +61,8 @@ export const approvePolicyBodySchema = z
 export const rejectPolicyBodySchema = z
   .object({
     approverEmail: z.string().trim().email(),
-    rejectionReason: z.string().trim().min(1).max(1000),
+    rejectionReason: z.string().trim().min(10).max(1000),
+    type: z.enum(["return", "reject"]).default("return"),
   })
   .strict();
 

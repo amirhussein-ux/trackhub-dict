@@ -94,17 +94,22 @@ export async function evaluateWorkflowRules(
       result.remarks = buildRemarkEntry("Approval recorded", new Date());
       break;
 
-    case "REVIEW_REJECTED":
-      if (
-        (currentState === "For Review" || currentState === "Under Review") &&
-        canTransition(currentState, "Returned for Revision")
-      ) {
+    case "REVIEW_RETURNED":
+      if (canTransition(currentState, "Returned for Revision")) {
         result.stateChange = "Returned for Revision";
-      } else if (canTransition(currentState, "Rejected")) {
+      }
+      policy.reviewReady = false;
+      policy.status = "On Progress";
+      result.remarks = buildRemarkEntry("Policy returned for revision", new Date());
+      break;
+
+    case "REVIEW_REJECTED":
+      if (canTransition(currentState, "Rejected")) {
         result.stateChange = "Rejected";
       }
-
-      result.remarks = buildRemarkEntry("Policy returned for revision", new Date());
+      policy.reviewReady = false;
+      policy.status = "On Hold";
+      result.remarks = buildRemarkEntry("Policy rejected", new Date());
       break;
 
     case "FINAL_DOCUMENT_UPLOADED": {

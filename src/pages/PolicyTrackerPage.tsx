@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Archive, ChevronLeft, ChevronRight, ExternalLink, Info, MoreVertical, Pencil, Plus, Search, Share2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { PolicyStatusBadge } from "@/components/PolicyStatusBadge";
 import { divisions, type Division, type Policy, type PolicyStatus, type PolicyType } from "@/lib/mock-data";
 import { buildEmptyDivisionMembers, fetchDivisionMembers } from "@/lib/user-directory";
 import {
@@ -119,26 +120,6 @@ function getStatusSelectClass(status: PolicyStatus): string {
   }
 }
 
-function getWorkflowStateBadgeVariant(state?: string): "default" | "secondary" | "destructive" | "outline" {
-  switch (state) {
-    case "Draft":
-      return "secondary";
-    case "Collaborating":
-    case "For Review":
-      return "outline";
-    case "Under Review":
-      return "destructive";
-    case "Approved":
-    case "Published":
-      return "default";
-    case "Archived":
-      return "secondary";
-    default:
-      return "outline";
-  }
-}
-
-
 function inferPolicyType(policyNumber: string): PolicyType {
   if (policyNumber.startsWith("RA-")) return "Republic Act";
   if (policyNumber.startsWith("EO-")) return "Executive Order";
@@ -185,6 +166,14 @@ export default function PolicyTrackerPage() {
       return matchSearch && matchStatus && matchDivision && matchType;
     });
   }, [policies, search, statusFilter, divisionFilter, typeFilter, currentUser]);
+
+  const visiblePolicies = useMemo(() => {
+    return policies.filter((p) => {
+      if (!canViewPolicyRecord(currentUser, p)) return false;
+      if (p.archived) return false;
+      return true;
+    });
+  }, [policies, currentUser]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -674,7 +663,11 @@ export default function PolicyTrackerPage() {
             <TableBody>
               {paginated.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">No policies found.</TableCell>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    {visiblePolicies.length === 0
+                      ? "You have no policies yet. Create one to get started."
+                      : "No policies match your current filter."}
+                  </TableCell>
                 </TableRow>
               ) : paginated.map((p) => (
                 <TableRow key={p.id} className="hover:bg-muted/30 cursor-pointer transition-colors" onClick={() => navigate(`/dashboard/policies/${p.id}`)}>
@@ -684,9 +677,7 @@ export default function PolicyTrackerPage() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.division}</TableCell>
                   <TableCell>
-                    <Badge variant={getWorkflowStateBadgeVariant(p.workflowState)}>
-                      {p.workflowState || "Draft"}
-                    </Badge>
+                    <PolicyStatusBadge workflowState={p.workflowState} />
                   </TableCell>
                   <TableCell>
                     <Badge className={getStatusSelectClass(p.status)}>{p.status}</Badge>
@@ -719,7 +710,7 @@ export default function PolicyTrackerPage() {
                             <Pencil className="h-4 w-4 mr-2" /> Edit
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => openShare(p)} disabled={!canGrantPolicyAccess(currentUser, p)}>
-                            <Share2 className="h-4 w-4 mr-2" /> Share
+                            <Share2 className="h-4 w-4 mr-2" /> Add collaborator
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => handleRequestAccess(p)} disabled={canEditPolicyRecord(currentUser, p)}>
                             <Share2 className="h-4 w-4 mr-2" /> Request Access
@@ -863,7 +854,7 @@ export default function PolicyTrackerPage() {
                   onChange={(e) => setEditVersionMarkAsFinal(e.target.checked)}
                 />
                 <Label htmlFor="edit-version-final" className="text-sm font-normal">
-                  Mark as Final (triggers FINAL_DOCUMENT_UPLOADED)
+                  Mark as final for publishing
                 </Label>
               </div>
             </div>
@@ -979,7 +970,7 @@ export default function PolicyTrackerPage() {
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Share Document Access</DialogTitle>
+            <DialogTitle>Add collaborator</DialogTitle>
             <DialogDescription>Select a division and member to grant document access.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1016,7 +1007,7 @@ export default function PolicyTrackerPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShareOpen(false)}>Cancel</Button>
-            <Button variant="hero" onClick={handleShareSave} disabled={!shareDivision || !shareMember}>Grant Access</Button>
+            <Button variant="hero" onClick={handleShareSave} disabled={!shareDivision || !shareMember}>Add collaborator</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1024,8 +1015,8 @@ export default function PolicyTrackerPage() {
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Archive Document</DialogTitle>
-            <DialogDescription>Archive this document so it is retained before any permanent deletion.</DialogDescription>
+            <DialogTitle>Archive policy</DialogTitle>
+            <DialogDescription>This will permanently close the policy. It cannot be edited after archiving.</DialogDescription>
           </DialogHeader>
           <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-sm text-muted-foreground">
             {selectedPolicy ? `You are archiving ${selectedPolicy.policyNumber} - ${selectedPolicy.title}.` : "No policy selected."}

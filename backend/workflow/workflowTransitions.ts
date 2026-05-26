@@ -9,7 +9,7 @@ export const VALID_TRANSITIONS: Record<WorkflowState, WorkflowState[]> = {
   Published: ["Archived"],
   Archived: [],
   Rejected: ["Collaborating", "For Review", "Archived"],
-  "Returned for Revision": ["For Review"],
+  "Returned for Revision": ["Collaborating", "For Review"],
 };
 
 export function canTransition(from: WorkflowState, to: WorkflowState): boolean {

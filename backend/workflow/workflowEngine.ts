@@ -1,7 +1,7 @@
 import Policy from "../models/Policy";
 import ActivityLog from "../models/ActivityLog";
 import Notification from "../models/Notification";
-import { WorkflowEvent, WorkflowState } from "./workflowTypes";
+import { WorkflowEvent, WorkflowEventType, WorkflowState } from "./workflowTypes";
 import { evaluateWorkflowRules } from "./workflowRules";
 import { logger } from "../lib/logger";
 import { TimelineService } from "../services/timelineService";
@@ -51,13 +51,13 @@ export async function processWorkflowEvent(event: WorkflowEvent): Promise<void> 
       timestamp: ACTIVITY_TIMESTAMP_FORMAT(),
     });
 
-    const recipients = getNotificationRecipients(policy.accessEmails ?? [], event);
+    const recipients = getNotificationRecipients(event, policy);
     if (recipients.length > 0) {
       // Bulk insert notifications instead of N individual creates (N+1 fix)
       const notificationsToCreate = recipients.map((recipientEmail) => ({
         policyId: policy.id,
         policyTitle: policy.title,
-        changeType: getNotificationMessage(event.type, result.stateChange),
+        changeType: getNotificationTitle(event, policy.title),
         timestamp: ACTIVITY_TIMESTAMP_FORMAT(),
         read: false,
         recipientEmail,
@@ -82,12 +82,33 @@ export async function processWorkflowEvent(event: WorkflowEvent): Promise<void> 
   }
 }
 
-function getNotificationRecipients(accessEmails: string[], event: WorkflowEvent): string[] {
-  const metadataRecipients = Array.isArray(event.metadata?.notifyEmails)
-    ? event.metadata.notifyEmails.filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0)
-    : [];
+function normalizeEmails(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
 
-  return Array.from(new Set([...accessEmails, ...metadataRecipients]));
+  return input.filter((value: unknown): value is string => typeof value === "string" && value.trim().length > 0);
+}
+
+function getNotificationRecipients(event: WorkflowEvent, policy: { createdBy: string; accessEmails?: string[] }): string[] {
+  const metadataRecipients = normalizeEmails(event.metadata?.notifyEmails);
+  const ppmcadRecipients = normalizeEmails(event.metadata?.ppmcadEmails);
+
+  switch (event.type) {
+    case "REVIEW_READY":
+      return Array.from(new Set(metadataRecipients));
+    case "REVIEW_RETURNED":
+    case "REVIEW_REJECTED":
+      return [policy.createdBy];
+    case "APPROVAL_GRANTED":
+      return event.metadata?.allApprovalsComplete ? [policy.createdBy] : [];
+    case "FINAL_DOCUMENT_UPLOADED":
+      return Array.from(new Set([policy.createdBy, ...ppmcadRecipients]));
+    case "POLICY_ARCHIVED":
+      return Array.from(new Set(policy.accessEmails ?? []));
+    default:
+      return Array.from(new Set([...(policy.accessEmails ?? []), ...metadataRecipients]));
+  }
 }
 
 function mapWorkflowStateToStatus(workflowState: WorkflowState): PolicyStatus {
@@ -112,7 +133,8 @@ function getActionDescription(eventType: WorkflowEvent["type"], stateChange?: Wo
     ACCESS_GRANTED: "Granted document access",
     DOCUMENT_UPLOADED: "Uploaded document version",
     REVIEW_READY: "Submitted policy for review",
-    REVIEW_REJECTED: "Returned policy for revision",
+    REVIEW_RETURNED: "Returned policy for revision",
+    REVIEW_REJECTED: "Rejected policy",
     APPROVAL_GRANTED: "Recorded approval action",
     FINAL_DOCUMENT_UPLOADED: "Uploaded final document for publication",
     POLICY_ARCHIVED: "Archived policy",
@@ -134,6 +156,7 @@ function getActivityType(eventType: WorkflowEvent["type"]): "create" | "update" 
     ACCESS_GRANTED: "update",
     DOCUMENT_UPLOADED: "upload",
     REVIEW_READY: "status",
+    REVIEW_RETURNED: "status",
     REVIEW_REJECTED: "status",
     APPROVAL_GRANTED: "status",
     FINAL_DOCUMENT_UPLOADED: "upload",
@@ -144,19 +167,21 @@ function getActivityType(eventType: WorkflowEvent["type"]): "create" | "update" 
   return typeMapping[eventType];
 }
 
-function getNotificationMessage(eventType: WorkflowEvent["type"], stateChange?: WorkflowState): string {
-  const messages: Record<WorkflowEvent["type"], string> = {
-    POLICY_CREATED: "New policy created",
-    ACCESS_GRANTED: "Collaborator added to policy",
-    DOCUMENT_UPLOADED: "New document version uploaded",
-    REVIEW_READY: "Policy submitted for review",
-    REVIEW_REJECTED: "Policy returned for revision",
-    APPROVAL_GRANTED: "Approval action recorded",
-    FINAL_DOCUMENT_UPLOADED: "Final document uploaded for publication",
-    POLICY_ARCHIVED: "Policy archived",
-    POLICY_UPDATED: "Policy details updated",
+function getNotificationTitle(event: WorkflowEvent, policyTitle: string): string {
+  const titleByEvent: Record<WorkflowEventType, string> = {
+    POLICY_CREATED: `Policy created: "${policyTitle}"`,
+    ACCESS_GRANTED: `You were added as a collaborator on "${policyTitle}"`,
+    DOCUMENT_UPLOADED: `A new document version was uploaded for "${policyTitle}"`,
+    REVIEW_READY: `"${policyTitle}" has been sent to you for review`,
+    REVIEW_RETURNED: `Your policy "${policyTitle}" was returned - please see the feedback`,
+    REVIEW_REJECTED: `Your policy "${policyTitle}" was not approved`,
+    APPROVAL_GRANTED: event.metadata?.allApprovalsComplete
+      ? `Your policy "${policyTitle}" has been approved`
+      : `An approval update was recorded for "${policyTitle}"`,
+    FINAL_DOCUMENT_UPLOADED: `"${policyTitle}" is now published on the ICT Knowledge Portal. A new policy has been published. Please begin advocacy and distribution.`,
+    POLICY_ARCHIVED: `"${policyTitle}" has been archived`,
+    POLICY_UPDATED: `Policy details were updated for "${policyTitle}"`,
   };
 
-  const statusSuffix = stateChange ? ` | Workflow: ${stateChange}` : "";
-  return `${messages[eventType]}${statusSuffix}`;
+  return titleByEvent[event.type];
 }

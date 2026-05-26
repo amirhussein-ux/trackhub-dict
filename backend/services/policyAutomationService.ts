@@ -70,15 +70,27 @@ export class PolicyAutomationService {
     }
 
     // Use centralized validation: prevent self-approval
-    validateNoSelfApproval(policy.createdBy, triggeredBy);
+    try {
+      validateNoSelfApproval(policy.createdBy, triggeredBy);
+    } catch {
+      throw new Error("You cannot send your own policy for review. Ask a colleague from your division to submit it.");
+    }
 
     const documentCount = await RepositoryDocument.countDocuments({ policyId });
     if (documentCount === 0) {
-      throw new Error("At least one document version must be uploaded before review submission.");
+      throw new Error("Please upload at least one document before sending for review.");
     }
 
     // Use centralized validation: validate collaborators
-    validateCollaborators(policy.createdBy, policy.accessEmails ?? []);
+    try {
+      validateCollaborators(policy.createdBy, policy.accessEmails ?? []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("At least one collaborator")) {
+        throw new Error("Please add at least one collaborator before sending for review.");
+      }
+      throw error;
+    }
 
     const divisionReviewers = await User.find({
       division: policy.division,
@@ -89,7 +101,7 @@ export class PolicyAutomationService {
 
     const reviewerEmails = Array.from(new Set(divisionReviewers.map((reviewer) => reviewer.email)));
     if (reviewerEmails.length === 0) {
-      throw new Error(`No active reviewers found for division ${policy.division}.`);
+      throw new Error("No active reviewers found in your division. Contact your Division Chief or OIC Director.");
     }
 
     policy.reviewers = reviewerEmails;
@@ -149,7 +161,8 @@ export class PolicyAutomationService {
     policyId: string,
     approverEmail: string,
     rejectionReason: string,
-    triggeredBy: string
+    triggeredBy: string,
+    type: "return" | "reject" = "return"
   ): Promise<void> {
     const policy = await Policy.findById(policyId);
     if (!policy) {
@@ -165,12 +178,12 @@ export class PolicyAutomationService {
     }) as typeof policy.approvalChain;
 
     policy.reviewReady = false;
-    policy.workflowState = "Returned for Revision";
-    policy.status = "On Progress";
+    policy.workflowState = type === "reject" ? "Rejected" : "Returned for Revision";
+    policy.status = type === "reject" ? "On Hold" : "On Progress";
     
     await policy.save();
 
-    await this.triggerWorkflowEvent(policyId, "REVIEW_REJECTED", triggeredBy, {
+    await this.triggerWorkflowEvent(policyId, type === "reject" ? "REVIEW_REJECTED" : "REVIEW_RETURNED", triggeredBy, {
       approverEmail,
       rejectionReason,
       notifyEmails: policy.accessEmails ?? [],
@@ -216,8 +229,12 @@ export class PolicyAutomationService {
     policy.publishedAt = new Date();
     await policy.save();
 
+    const ppmcadMembers = await User.find({ division: "PPMCAD", status: "active", verified: true }).select("email");
+
     await this.triggerWorkflowEvent(policyId, "FINAL_DOCUMENT_UPLOADED", triggeredBy, {
       uploaderDivision: "PPMED",
+      policyLink: `/dashboard/policies/${policy.id}`,
+      ppmcadEmails: ppmcadMembers.map((member) => member.email),
       notifyEmails: policy.accessEmails ?? [],
     });
   }

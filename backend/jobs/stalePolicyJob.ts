@@ -41,7 +41,7 @@ async function checkForStalePolicies(): Promise<void> {
           Notification.create({
             policyId: policy.id,
             policyTitle: policy.title,
-            changeType: `Policy review reminder: ${policy.policyNumber} has been under review for ${STALE_THRESHOLD_DAYS}+ days`,
+            changeType: `Reminder: '${policy.title}' is waiting for your review`,
             timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
             read: false,
             recipientEmail: reviewer,

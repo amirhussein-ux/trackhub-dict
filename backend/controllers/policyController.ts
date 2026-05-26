@@ -432,7 +432,8 @@ export const rejectPolicy = async (req: Request, res: Response, next: NextFuncti
         policy.id,
         req.body.approverEmail,
         req.body.rejectionReason,
-        user.email
+        user.email,
+        req.body.type ?? "return"
       );
     } catch (serviceError) {
       req.log?.error(

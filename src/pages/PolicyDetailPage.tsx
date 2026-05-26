@@ -1,18 +1,21 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, FileText, Download, CheckCircle, Circle, Clock, Send } from "lucide-react";
-import { getStatusBadgeVariant, type Policy, type PolicyStatus } from "@/lib/mock-data.ts";
+import { ArrowLeft, FileText, Download, CheckCircle, Circle, Clock } from "lucide-react";
+import { type PolicyStatus } from "@/lib/mock-data.ts";
 import { loadPoliciesFromStorage } from "@/lib/policy-storage";
-import { Input } from "@/components/ui/input";
 import { loadActivitiesFromStorage, loadDocumentsFromStorage, refreshAllDataFromApi, subscribeToDataUpdates } from "@/lib/records-storage";
 import { getCurrentUser } from "@/lib/user-session";
-import { isPolicyOwner } from "@/lib/policyRelationships";
+import { isApprover, isPolicyOwner } from "@/lib/policyRelationships";
 import { PolicyAutomationService } from "@/lib/api/automationService";
 import { useToast } from "@/hooks/use-toast";
+import { PolicyStatusBadge } from "@/components/PolicyStatusBadge";
+import { PolicyProgressStepper } from "@/components/PolicyProgressStepper";
+import { ReviewerFeedbackCallout } from "@/components/ReviewerFeedbackCallout";
+import { ApprovalChainProgress } from "@/components/ApprovalChainProgress";
+import { usePolicyActions } from "@/hooks/usePolicyActions";
 
 const timelineSteps: { label: string; key: PolicyStatus }[] = [
   { label: "On Hold", key: "On Hold" },
@@ -23,95 +26,6 @@ const timelineSteps: { label: string; key: PolicyStatus }[] = [
 ];
 
 const statusOrder: PolicyStatus[] = ["On Hold", "On Progress", "Under Review", "Approved", "Published"];
-
-type ApprovalsPanelProps = {
-  policy: Policy;
-  currentUser: ReturnType<typeof getCurrentUser>;
-  toast: ReturnType<typeof useToast>["toast"];
-  onApprove: (policyId: string) => Promise<void>;
-  onReject: (policyId: string, reason: string) => Promise<void>;
-};
-
-function ApprovalsPanel({
-  policy,
-  currentUser,
-  toast,
-  onApprove,
-  onReject,
-}: ApprovalsPanelProps) {
-  const [rejectReason, setRejectReason] = useState("");
-
-  const approvalChain = policy.approvalChain ?? [];
-  const canAct = approvalChain.some((entry) => entry.approverEmail?.toLowerCase() === currentUser.email.toLowerCase());
-
-  const pending = approvalChain.filter((entry) => !entry.approved && !entry.rejectedAt);
-
-  return (
-    <div className="space-y-4">
-      {!approvalChain.length ? (
-        <p className="text-sm text-muted-foreground">No approval chain is configured for this policy.</p>
-      ) : (
-        <>
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Approval chain</p>
-            <div className="space-y-2">
-              {approvalChain.map((entry, idx) => (
-                <div key={`${entry.approverEmail}-${idx}`} className="flex items-center justify-between rounded-lg border border-border/50 p-3">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium">{entry.approverEmail}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {entry.approved ? "Approved" : entry.rejectedAt ? "Rejected" : "Pending"}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-xs">
-                    {entry.approved ? "Done" : entry.rejectedAt ? "Done" : canAct ? "Actionable" : "Waiting"}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {canAct && pending.length > 0 ? (
-            <div className="space-y-3 pt-2 border-t border-border">
-              <p className="text-sm font-medium">Your decision</p>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Button variant="hero" onClick={() => onApprove(policy.id)} className="min-w-[140px]">
-                  Approve
-                </Button>
-                <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-                  <Input
-                    value={rejectReason}
-                    onChange={(e) => setRejectReason(e.target.value)}
-                    placeholder="Rejection reason (required)"
-                    className="flex-1"
-                  />
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      const reason = rejectReason.trim();
-                      if (!reason) {
-                        toast({ title: "Missing reason", description: "Please enter a rejection reason.", variant: "destructive" });
-                        return;
-                      }
-                      void onReject(policy.id, reason).then(() => setRejectReason(""));
-                    }}
-                    disabled={!rejectReason.trim()}
-                  >
-                    Reject
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              {canAct ? "All approvals by your role are already decided." : "You are not in the approval chain for this policy."}
-            </p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
 
 export default function PolicyDetailPage() {
   const { id } = useParams();
@@ -148,16 +62,27 @@ export default function PolicyDetailPage() {
   }
 
   const currentIdx = statusOrder.indexOf(policy.status);
-  const ownerCanSubmitForReview =
-    isPolicyOwner(currentUser, policy) &&
-    (policy.workflowState === "Draft" || policy.workflowState === "Collaborating" || policy.workflowState === "Returned for Revision");
+  const workflowState = policy.workflowState ?? "Draft";
+  const isOwner = isPolicyOwner(currentUser, policy);
+  const ownerCanSubmitForReview = isOwner && workflowState === "Collaborating";
+  const userIsApprover = isApprover(currentUser, policy);
+  const isWaitingForApprovers = isOwner && (workflowState === "For Review" || workflowState === "Under Review");
+  const collaboratorCheck = (policy.accessEmails ?? []).length > 0;
+  const documentCheck = policyDocuments.length > 0;
+  const notSoleAuthorCheck = collaboratorCheck;
+  const canSubmitChecklist = collaboratorCheck && documentCheck && notSoleAuthorCheck;
+  const policyActions = usePolicyActions(policy, currentUser);
+
+  const latestFeedback = (policy.timeline ?? [])
+    .slice()
+    .reverse()
+    .find((entry) => entry.event === "REVIEW_RETURNED" || entry.event === "REVIEW_REJECTED");
 
   const infoRows = [
     ["Policy ID", policy.id],
     ["Policy Number", policy.policyNumber],
     ["Type", policy.type],
     ["Division", policy.division],
-    ["Workflow State", policy.workflowState || "Draft"],
     ["Date Signed", policy.dateSigned || "-"],
     ["Publication Source", policy.publicationSource || "-"],
     ["Publication Date", policy.publicationDate || "-"],
@@ -178,16 +103,62 @@ export default function PolicyDetailPage() {
       await refreshAllDataFromApi();
       toast({
         title: "Policy submitted for review",
-        description: "The workflow engine evaluated the policy and moved it to the review stage.",
+        description: "Your policy is now with the reviewers.",
       });
     } catch (error) {
       toast({
         title: "Unable to submit for review",
-        description: error instanceof Error ? error.message : "The workflow engine rejected the review submission.",
+        description: error instanceof Error ? error.message : "Unable to send this policy for review right now.",
         variant: "destructive",
       });
     } finally {
       setIsSubmittingForReview(false);
+    }
+  };
+
+  const handlePolicyAction = async (actionId: string) => {
+    try {
+      if (actionId === "review-ready") {
+        if (!canSubmitChecklist) {
+          toast({ title: "Incomplete checklist", description: "Complete all checklist items before sending for review.", variant: "destructive" });
+          return;
+        }
+        await handleMarkReadyForReview();
+        return;
+      }
+
+      if (actionId === "approve") {
+        if (!window.confirm("Are you sure you want to approve this policy? This cannot be undone.")) return;
+        await PolicyAutomationService.grantApproval(policy.id, currentUser.email);
+        await refreshAllDataFromApi();
+        toast({ title: "Policy approved" });
+        return;
+      }
+
+      if (actionId === "return") {
+        const reason = window.prompt("Please describe what needs to be changed. The drafting team will see this message.");
+        if (!reason || reason.trim().length < 10) {
+          toast({ title: "Feedback required", description: "Please provide at least 10 characters.", variant: "destructive" });
+          return;
+        }
+        await PolicyAutomationService.rejectApproval(policy.id, currentUser.email, reason.trim(), "return");
+        await refreshAllDataFromApi();
+        toast({ title: "Policy returned for revision" });
+        return;
+      }
+
+      if (actionId === "archive") {
+        if (!window.confirm("This will permanently close the policy. It cannot be edited after archiving.")) return;
+        await PolicyAutomationService.archivePolicy(policy.id);
+        await refreshAllDataFromApi();
+        toast({ title: "Policy archived" });
+      }
+    } catch (error) {
+      toast({
+        title: "Action failed",
+        description: error instanceof Error ? error.message : "Unable to complete this action right now.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -201,17 +172,65 @@ export default function PolicyDetailPage() {
           <h1 className="text-xl font-bold text-foreground">{policy.title}</h1>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
             <span className="text-sm text-muted-foreground">{policy.policyNumber}</span>
-            <Badge variant={getStatusBadgeVariant(policy.status)}>{policy.status}</Badge>
-            <Badge variant="outline">{policy.workflowState || "Draft"}</Badge>
+            <PolicyStatusBadge workflowState={workflowState} />
           </div>
         </div>
-        {ownerCanSubmitForReview ? (
-          <Button onClick={handleMarkReadyForReview} disabled={isSubmittingForReview}>
-            <Send className="h-4 w-4 mr-2" />
-            {isSubmittingForReview ? "Submitting..." : "Ready for Review"}
-          </Button>
-        ) : null}
       </div>
+
+      {(workflowState === "Returned for Revision" || workflowState === "Rejected") && latestFeedback ? (
+        <ReviewerFeedbackCallout
+          variant={workflowState === "Rejected" ? "danger" : "warning"}
+          timestamp={new Date(latestFeedback.timestamp).toLocaleString()}
+          feedback={String(latestFeedback.metadata?.rejectionReason ?? latestFeedback.description)}
+          reviewer={latestFeedback.actor}
+        />
+      ) : null}
+
+      {isOwner ? <PolicyProgressStepper workflowState={workflowState} /> : null}
+
+      {!isWaitingForApprovers && policyActions.length > 0 ? (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Available actions</CardTitle></CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {policyActions.map((action) => (
+              <Button
+                key={action.id}
+                variant={action.variant === "danger" ? "destructive" : action.variant === "primary" ? "hero" : "outline"}
+                onClick={() => void handlePolicyAction(action.id)}
+                disabled={isSubmittingForReview || (action.id === "review-ready" && !canSubmitChecklist)}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {ownerCanSubmitForReview ? (
+        <Card>
+          <CardHeader><CardTitle className="text-sm">Before you send for review</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm">{collaboratorCheck ? "[x]" : "[ ]"} At least one collaborator added</p>
+            <p className="text-sm">{documentCheck ? "[x]" : "[ ]"} At least one document uploaded</p>
+            <p className="text-sm">{notSoleAuthorCheck ? "[x]" : "[ ]"} You are not the sole author</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {isWaitingForApprovers ? (
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-sm">
+              Your policy is with the reviewers.
+              <br />
+              You will receive a notification when they decide.
+              <br />
+              <br />
+              If no action is taken within 7 days, the system will send them a reminder automatically.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Tabs defaultValue="overview">
         <TabsList>
@@ -335,19 +354,13 @@ export default function PolicyDetailPage() {
           <Card className="shadow-card border-border/50">
             <CardHeader><CardTitle className="text-sm">Approvals</CardTitle></CardHeader>
             <CardContent>
-              <ApprovalsPanel
-                policy={policy}
-                currentUser={currentUser}
-                toast={toast}
-                onApprove={async (policyId) => {
-                  await PolicyAutomationService.grantApproval(policyId, currentUser.email);
-                  await refreshAllDataFromApi();
-                }}
-                onReject={async (policyId, reason) => {
-                  await PolicyAutomationService.rejectApproval(policyId, currentUser.email, reason);
-                  await refreshAllDataFromApi();
-                }}
-              />
+              {userIsApprover && workflowState === "Under Review" ? (
+                <div className="mb-4">
+                  <ApprovalChainProgress policy={policy} />
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Approval progress is visible to approvers only.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

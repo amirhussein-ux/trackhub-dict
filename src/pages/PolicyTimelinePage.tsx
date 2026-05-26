@@ -146,7 +146,7 @@ export default function PolicyTimelinePage() {
       {filtered.length === 0 && (
         <div className="text-center py-16 text-muted-foreground">
           <Clock className="h-12 w-12 mx-auto mb-3 opacity-30" />
-          <p>No policies match the selected filters.</p>
+          <p>No policies match your current filter.</p>
         </div>
       )}
     </div>
