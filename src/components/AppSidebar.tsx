@@ -5,6 +5,7 @@ import {
   FolderOpen,
   Activity,
   UserCheck,
+  Megaphone,
   BarChart3,
   Users,
   Settings,
@@ -31,7 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { logoutUser } from "@/lib/auth-workflows";
 import { clearCurrentUser, getCurrentUser } from "@/lib/user-session";
-import { canViewReports, canViewUserManagement } from "@/lib/access-control";
+import { canViewAdvocacy, canViewReports, canViewUserManagement } from "@/lib/access-control";
 import { ConfirmActionDialog } from "@/components/ConfirmActionDialog";
 import Logo from "@/assets/trackhublogo.png";
 
@@ -39,6 +40,7 @@ import Logo from "@/assets/trackhublogo.png";
 const mainNav = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Policy Tracker", url: "/dashboard/policies", icon: FileText },
+  { title: "Advocacy", url: "/dashboard/advocacy", icon: Megaphone },
   { title: "Policy Timeline", url: "/dashboard/timeline", icon: Clock },
   { title: "Documents", url: "/dashboard/documents", icon: FolderOpen },
   { title: "Archive", url: "/dashboard/archive", icon: Archive },
@@ -60,6 +62,10 @@ export function AppSidebar() {
   const currentUser = getCurrentUser();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const isActive = (path: string) => location.pathname === path;
+  const visibleMainNav = mainNav.filter((item) => {
+    if (item.title === "Advocacy") return canViewAdvocacy(currentUser);
+    return true;
+  });
   const visibleAdminNav = adminNav.filter((item) => {
     if (item.title === "Reports") return canViewReports(currentUser);
     if (item.title === "User Management") return canViewUserManagement(currentUser);
@@ -111,7 +117,7 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNav.map((item) => (
+              {visibleMainNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink

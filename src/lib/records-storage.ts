@@ -30,6 +30,7 @@ export interface RepositoryDocument {
 type DocumentDto = MongoEntity<Omit<RepositoryDocument, "id">>;
 type ActivityDto = MongoEntity<Omit<ActivityLog, "id">>;
 type NotificationDto = MongoEntity<Omit<Notification, "id"> & { recipientEmail?: string }>;
+type PaginatedResponse<T> = { data: T[] };
 
 let documentCache: RepositoryDocument[] = [];
 let activityCache: ActivityLog[] = [];
@@ -125,7 +126,9 @@ function mergePreviewFields(current: RepositoryDocument[], fetched: RepositoryDo
 }
 
 async function refetchDocumentsFromApi(current: RepositoryDocument[] = documentCache): Promise<RepositoryDocument[]> {
-  const fetched = (await apiRequest<DocumentDto[]>("/documents")).map(toDocument);
+  const response = await apiRequest<DocumentDto[] | PaginatedResponse<DocumentDto>>("/documents");
+  const documentDtos = Array.isArray(response) ? response : response.data;
+  const fetched = documentDtos.map(toDocument);
   return mergePreviewFields(current, fetched);
 }
 
@@ -136,12 +139,13 @@ async function hydrateAllData(): Promise<void> {
 
   isHydratingData = true;
   try {
-    const [documents, activities, notifications] = await Promise.all([
-      apiRequest<DocumentDto[]>("/documents"),
+    const [documentsResponse, activities, notifications] = await Promise.all([
+      apiRequest<DocumentDto[] | PaginatedResponse<DocumentDto>>("/documents"),
       apiRequest<ActivityDto[]>("/activities"),
       apiRequest<NotificationDto[]>("/notifications"),
     ]);
 
+    const documents = Array.isArray(documentsResponse) ? documentsResponse : documentsResponse.data;
     documentCache = mergePreviewFields(documentCache, documents.map(toDocument));
     activityCache = activities.map(toActivity);
     notificationCache = notifications.map(toNotification);

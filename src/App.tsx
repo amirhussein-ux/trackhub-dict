@@ -15,6 +15,7 @@ import PolicyDetailPage from "./pages/PolicyDetailPage";
 import ActivityLogPage from "./pages/ActivityLogPage";
 import PolicyTimelinePage from "./pages/PolicyTimelinePage";
 import DocumentRepositoryPage from "./pages/DocumentRepositoryPage";
+import AdvocacyPage from "./pages/AdvocacyPage";
 import ReportsPage from "./pages/ReportsPage";
 import ArchivePage from "./pages/ArchivePage";
 import UserManagementPage from "./pages/UserManagementPage";
@@ -115,6 +116,7 @@ const App = () => (
               <Route index element={<DashboardPage />} />
               <Route path="policies" element={<PolicyTrackerPage />} />
               <Route path="policies/:id" element={<PolicyDetailPage />} />
+              <Route path="advocacy" element={<AdvocacyPage />} />
               <Route path="timeline" element={<PolicyTimelinePage />} />
               <Route path="documents" element={<DocumentRepositoryPage />} />
               <Route path="archive" element={<ArchivePage />} />

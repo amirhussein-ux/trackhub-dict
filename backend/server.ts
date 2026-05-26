@@ -19,6 +19,7 @@ import {
   supportLimiter,
 } from "./middleware/rateLimit";
 import activityRoutes from "./routes/activityRoutes";
+import advocacyRoutes from "./routes/advocacyRoutes";
 import authRoutes from "./routes/authRoutes";
 import documentRoutes from "./routes/documentRoutes";
 import itemRoutes from "./routes/itemRoutes";
@@ -154,6 +155,7 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api", apiReadLimiter, createLimiter, advocacyRoutes);
 app.use("/api/policies", requireAuth, apiReadLimiter, createLimiter, policyRoutes);
 app.use("/api/documents", requireAuth, apiReadLimiter, createLimiter, documentRoutes);
 app.use("/api/activities", requireAuth, apiReadLimiter, createLimiter, activityRoutes);

@@ -44,6 +44,11 @@ export function canViewReports(user: SessionUser): boolean {
   return role === "OIC Director" || role === "Division Chief";
 }
 
+export function canViewAdvocacy(user: SessionUser): boolean {
+  if (isGuestUser(user)) return false;
+  return user.division === "PPMCAD" || user.role === "OIC Director" || user.role === "Division Chief";
+}
+
 export function canViewUserManagement(user: SessionUser): boolean {
   if (isGuestUser(user)) return false;
   const role = normalizeRole(user.role);

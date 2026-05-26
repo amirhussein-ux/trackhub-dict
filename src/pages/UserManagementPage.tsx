@@ -89,6 +89,10 @@ const roleFromApi = (role: string): UserRole => {
   return "Division Member";
 };
 
+const isDivision = (value: string): value is Division => {
+  return divisions.includes(value as Division);
+};
+
 const mapApiUserToManaged = (u: {
   id?: string;
   _id?: string;
@@ -96,13 +100,13 @@ const mapApiUserToManaged = (u: {
   email: string;
   name: string;
   role: string;
+  division?: string;
   verified: boolean;
   firstLogin: boolean;
   status: "active" | "inactive" | "suspended";
 }): ManagedUser => {
-  // Backend user model does not provide division/position/phone/activity.
-  // Keep the UI consistent with safe placeholders.
-  const derivedDivision: Division = "PRAD" as Division;
+  // Backend now provides division; keep a safe fallback for legacy records.
+  const derivedDivision: Division = isDivision(u.division ?? "") ? u.division : "PRAD";
   const mongoId = u.id || u._id || "";
 
   return {
@@ -178,6 +182,7 @@ export default function UserManagementPage() {
           email: string;
           name: string;
           role: string;
+          division?: string;
           verified: boolean;
           firstLogin: boolean;
           status: "active" | "inactive" | "suspended";
