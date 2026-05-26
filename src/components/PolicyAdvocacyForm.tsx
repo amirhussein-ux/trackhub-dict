@@ -13,6 +13,7 @@ type PolicyAdvocacyFormProps = {
   onCancel?: () => void;
   disableSave?: boolean;
   disableSaveMessage?: string;
+  onSaved?: (record: PolicyAdvocacyRecord) => void;
 };
 
 type FormState = {
@@ -63,6 +64,7 @@ export default function PolicyAdvocacyForm({
   onCancel,
   disableSave = false,
   disableSaveMessage,
+  onSaved,
 }: PolicyAdvocacyFormProps) {
   const { toast } = useToast();
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -161,6 +163,7 @@ export default function PolicyAdvocacyForm({
       const saved = await upsertAdvocacy(policyId, payload);
       setRecord(saved);
       toast({ title: "Advocacy details saved." });
+      onSaved?.(saved);
     } catch (error) {
       toast({
         title: "Unable to save advocacy details",

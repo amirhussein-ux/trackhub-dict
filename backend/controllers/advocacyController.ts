@@ -51,6 +51,28 @@ export const getAdvocacy = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
+export const listAdvocacy = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const currentUser = getAuthenticatedUser(req, res);
+    if (!currentUser) {
+      return;
+    }
+
+    if (!canViewAdvocacy(currentUser)) {
+      res.status(403).json({ message: "You do not have permission to view advocacy details." });
+      return;
+    }
+
+    const records = await PolicyAdvocacy.find({})
+      .populate("policyId", "policyNumber title division workflowState")
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json(records);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const upsertAdvocacy = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const currentUser = getAuthenticatedUser(req, res);

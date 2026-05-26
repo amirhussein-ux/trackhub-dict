@@ -20,6 +20,17 @@ export type PolicyAdvocacyRecord = PolicyAdvocacyPayload & {
   createdAt?: string;
 };
 
+export type PolicyAdvocacyListRecord = PolicyAdvocacyRecord & {
+  policyId?: string | {
+    _id?: string;
+    id?: string;
+    policyNumber?: string;
+    title?: string;
+    division?: string;
+    workflowState?: string;
+  };
+};
+
 export async function getAdvocacy(policyId: string): Promise<PolicyAdvocacyRecord> {
   try {
     return await apiRequest<PolicyAdvocacyRecord>(`/policies/${policyId}/advocacy`);
@@ -36,5 +47,13 @@ export async function upsertAdvocacy(policyId: string, payload: PolicyAdvocacyPa
     });
   } catch (error) {
     throw new Error(error instanceof Error ? error.message : "Failed to save advocacy details.");
+  }
+}
+
+export async function listAdvocacy(): Promise<PolicyAdvocacyListRecord[]> {
+  try {
+    return await apiRequest<PolicyAdvocacyListRecord[]>("/advocacy");
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : "Failed to load advocacy records.");
   }
 }
