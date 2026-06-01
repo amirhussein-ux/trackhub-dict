@@ -1,8 +1,11 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, FileText, Download, CheckCircle, Circle, Clock } from "lucide-react";
 import { type PolicyStatus } from "@/lib/mock-data.ts";
 import { loadPoliciesFromStorage } from "@/lib/policy-storage";
@@ -16,6 +19,8 @@ import { PolicyProgressStepper } from "@/components/PolicyProgressStepper";
 import { ReviewerFeedbackCallout } from "@/components/ReviewerFeedbackCallout";
 import { ApprovalChainProgress } from "@/components/ApprovalChainProgress";
 import { usePolicyActions } from "@/hooks/usePolicyActions";
+import { buildEmptyDivisionMembers, fetchDivisionMembers } from "@/lib/user-directory";
+import { divisions, type Division } from "@/lib/mock-data";
 
 const timelineSteps: { label: string; key: PolicyStatus }[] = [
   { label: "On Hold", key: "On Hold" },
@@ -36,6 +41,10 @@ export default function PolicyDetailPage() {
   const [activities, setActivities] = useState(() => loadActivitiesFromStorage());
   const [documents, setDocuments] = useState(() => loadDocumentsFromStorage());
   const [isSubmittingForReview, setIsSubmittingForReview] = useState(false);
+  const [divisionMembers, setDivisionMembers] = useState(buildEmptyDivisionMembers());
+  const [collaboratorDialogOpen, setCollaboratorDialogOpen] = useState(false);
+  const [collaboratorDivision, setCollaboratorDivision] = useState<Division | "">("");
+  const [collaboratorEmail, setCollaboratorEmail] = useState("");
 
   useEffect(() => {
     return subscribeToDataUpdates(() => {
@@ -43,6 +52,12 @@ export default function PolicyDetailPage() {
       setActivities(loadActivitiesFromStorage());
       setDocuments(loadDocumentsFromStorage());
     });
+  }, []);
+
+  useEffect(() => {
+    void fetchDivisionMembers()
+      .then((members) => setDivisionMembers(members))
+      .catch(() => setDivisionMembers(buildEmptyDivisionMembers()));
   }, []);
 
   const policy = policies.find((p) => p.id === id);
@@ -72,6 +87,7 @@ export default function PolicyDetailPage() {
   const notSoleAuthorCheck = collaboratorCheck;
   const canSubmitChecklist = collaboratorCheck && documentCheck && notSoleAuthorCheck;
   const policyActions = usePolicyActions(policy, currentUser);
+  const availableCollaborators = collaboratorDivision ? divisionMembers[collaboratorDivision] : [];
 
   const latestFeedback = (policy.timeline ?? [])
     .slice()
@@ -116,17 +132,38 @@ export default function PolicyDetailPage() {
     }
   };
 
+  const handleOpenCollaboratorDialog = () => {
+    setCollaboratorDivision(policy.division);
+    setCollaboratorEmail("");
+    setCollaboratorDialogOpen(true);
+  };
+
+  const handleAddCollaborator = async () => {
+    if (!collaboratorDivision || !collaboratorEmail) {
+      return;
+    }
+
+    try {
+      await PolicyAutomationService.grantAccess(policy.id, collaboratorEmail);
+      await refreshAllDataFromApi();
+      setCollaboratorDialogOpen(false);
+      toast({
+        title: "Collaborator added",
+        description: `${collaboratorEmail} now has access to this policy.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to add collaborator",
+        description: error instanceof Error ? error.message : "Unable to grant access right now.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handlePolicyAction = async (actionId: string) => {
     try {
       if (actionId === "grant-access") {
-        // Open a simple dialog to add a collaborator
-        const collaboratorEmail = window.prompt("Enter the email of the person to add as a collaborator:");
-        if (!collaboratorEmail || !collaboratorEmail.trim()) {
-          return;
-        }
-        await PolicyAutomationService.grantAccess(policy.id, collaboratorEmail.trim());
-        await refreshAllDataFromApi();
-        toast({ title: "Collaborator added", description: `${collaboratorEmail.trim()} now has access to this policy.` });
+        handleOpenCollaboratorDialog();
         return;
       }
 
@@ -200,24 +237,6 @@ export default function PolicyDetailPage() {
 
       {isOwner ? <PolicyProgressStepper workflowState={workflowState} /> : null}
 
-      {!isWaitingForApprovers && policyActions.length > 0 ? (
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Available actions</CardTitle></CardHeader>
-          <CardContent className="flex flex-wrap gap-2">
-            {policyActions.map((action) => (
-              <Button
-                key={action.id}
-                variant={action.variant === "danger" ? "destructive" : action.variant === "primary" ? "hero" : "outline"}
-                onClick={() => void handlePolicyAction(action.id)}
-                disabled={isSubmittingForReview || (action.id === "review-ready" && !canSubmitChecklist)}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      ) : null}
-
       {ownerCanSubmitForReview ? (
         <Card>
           <CardHeader><CardTitle className="text-sm">Before you send for review</CardTitle></CardHeader>
@@ -254,25 +273,60 @@ export default function PolicyDetailPage() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
-          <Card className="shadow-card border-border/50">
-            <CardHeader><CardTitle className="text-sm">Policy Information</CardTitle></CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {infoRows.map(([label, value]) => (
-                  <div key={label}>
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="text-sm font-medium text-foreground">{value}</p>
-                  </div>
-                ))}
-              </div>
-              {policy.remarks && (
-                <div className="mt-4 pt-4 border-t border-border">
-                  <p className="text-xs text-muted-foreground">Remarks</p>
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{policy.remarks}</p>
+          <div className="space-y-4">
+            {policyActions.length > 0 ? (
+              <Card className="shadow-card border-border/50">
+                <CardHeader><CardTitle className="text-sm">Available actions</CardTitle></CardHeader>
+                <CardContent className="flex flex-wrap gap-2">
+                  {policyActions.map((action) => (
+                    <Button
+                      key={action.id}
+                      variant={action.variant === "danger" ? "destructive" : action.variant === "primary" ? "hero" : "outline"}
+                      onClick={() => void handlePolicyAction(action.id)}
+                      disabled={isSubmittingForReview || (action.id === "review-ready" && !canSubmitChecklist)}
+                    >
+                      {action.label}
+                    </Button>
+                  ))}
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {isWaitingForApprovers ? (
+              <Card className="shadow-card border-border/50">
+                <CardContent className="pt-6">
+                  <p className="text-sm">
+                    Your policy is with the reviewers.
+                    <br />
+                    You will receive a notification when they decide.
+                    <br />
+                    <br />
+                    If no action is taken within 7 days, the system will send them a reminder automatically.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            <Card className="shadow-card border-border/50">
+              <CardHeader><CardTitle className="text-sm">Policy Information</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {infoRows.map(([label, value]) => (
+                    <div key={label}>
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="text-sm font-medium text-foreground">{value}</p>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                {policy.remarks && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <p className="text-xs text-muted-foreground">Remarks</p>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{policy.remarks}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="timeline" className="mt-4">
@@ -377,6 +431,61 @@ export default function PolicyDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={collaboratorDialogOpen} onOpenChange={setCollaboratorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add collaborator</DialogTitle>
+            <DialogDescription>Select a division and person to grant access to this policy.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Division</Label>
+              <Select
+                value={collaboratorDivision}
+                onValueChange={(value: Division) => {
+                  setCollaboratorDivision(value);
+                  setCollaboratorEmail("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select division" />
+                </SelectTrigger>
+                <SelectContent>
+                  {divisions.map((division) => (
+                    <SelectItem key={division} value={division}>
+                      {division}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Member</Label>
+              <Select value={collaboratorEmail} onValueChange={setCollaboratorEmail} disabled={!collaboratorDivision}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableCollaborators.map((member) => (
+                    <SelectItem key={member.email} value={member.email}>
+                      {member.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCollaboratorDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="hero" onClick={handleAddCollaborator} disabled={!collaboratorDivision || !collaboratorEmail}>
+              Add collaborator
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -64,7 +64,8 @@ export class PolicyAutomationService {
     policyId: string,
     documentName: string,
     uploaderDivision?: string,
-    isFinal?: boolean
+    isFinal?: boolean,
+    options?: { suppressNotifications?: boolean }
   ): Promise<void> {
     try {
       await apiRequest(`/policies/${policyId}/actions/document-uploaded`, {
@@ -73,6 +74,7 @@ export class PolicyAutomationService {
           documentName,
           uploaderDivision,
           isFinal,
+          suppressNotifications: options?.suppressNotifications ?? false,
         },
       });
       await refreshPoliciesFromApi();

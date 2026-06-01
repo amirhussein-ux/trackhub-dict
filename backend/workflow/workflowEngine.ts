@@ -91,6 +91,10 @@ function normalizeEmails(input: unknown): string[] {
 }
 
 function getNotificationRecipients(event: WorkflowEvent, policy: { createdBy: string; accessEmails?: string[] }): string[] {
+  if (event.metadata?.suppressNotifications === true) {
+    return [];
+  }
+
   const metadataRecipients = normalizeEmails(event.metadata?.notifyEmails);
   const ppmcadRecipients = normalizeEmails(event.metadata?.ppmcadEmails);
 

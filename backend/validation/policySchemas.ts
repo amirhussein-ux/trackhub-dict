@@ -71,6 +71,7 @@ export const documentUploadedBodySchema = z
     documentName: z.string().trim().min(1).max(255),
     uploaderDivision: divisionSchema.optional(),
     isFinal: z.boolean().optional(),
+    suppressNotifications: z.boolean().optional(),
   })
   .strict();
 

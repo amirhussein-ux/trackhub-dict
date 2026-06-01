@@ -198,7 +198,11 @@ export function canPublishPolicy(user: SessionUser): boolean {
 type PolicyActionPolicy = Pick<Policy, "createdBy" | "uploadedBy" | "workflowState" | "approvalChain">;
 
 export function canGrantCollaboratorAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
-  return isPolicyOwner(user, policy) && (policy.workflowState ?? "Draft") === "Draft";
+  if (isGuestUser(user)) {
+    return false;
+  }
+
+  return canGrantPolicyAccess(user, policy);
 }
 
 export function canSendForReviewAction(user: SessionUser, policy: PolicyActionPolicy): boolean {

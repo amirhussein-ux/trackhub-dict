@@ -521,7 +521,8 @@ export default function PolicyTrackerPage() {
           savedPolicy.id,
           documentName,
           savedPolicy.division,
-          false
+          false,
+          { suppressNotifications: true }
         );
       }
     } catch {
