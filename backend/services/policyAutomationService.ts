@@ -146,6 +146,15 @@ export class PolicyAutomationService {
     if (allApproved) {
       policy.status = "Approved";
       policy.workflowState = "Approved";
+      
+      // Add remarks entry when all approvers have approved
+      const remarkTimestamp = new Date().toISOString().slice(0, 10);
+      const remarkText = `${remarkTimestamp} | Policy approved by all approvers`;
+      if (policy.remarks) {
+        policy.remarks = policy.remarks + "\n" + remarkText;
+      } else {
+        policy.remarks = remarkText;
+      }
     }
 
     await policy.save();

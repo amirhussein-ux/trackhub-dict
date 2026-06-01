@@ -202,7 +202,7 @@ export function canGrantCollaboratorAction(user: SessionUser, policy: PolicyActi
 }
 
 export function canSendForReviewAction(user: SessionUser, policy: PolicyActionPolicy): boolean {
-  return isPolicyOwner(user, policy) && policy.workflowState === "Collaborating";
+  return isPolicyOwner(user, policy) && (policy.workflowState === "Collaborating" || policy.workflowState === "Returned for Revision");
 }
 
 export function canApprovePolicyAction(user: SessionUser, policy: PolicyActionPolicy): boolean {

@@ -12,7 +12,7 @@ export const createNotification = async (req: Request, res: Response, next: Next
       return;
     }
 
-    const timestamp = req.body.timestamp ?? new Date().toISOString().replace("T", " ").slice(0, 16);
+    const timestamp = req.body.timestamp ?? new Date().toISOString();
     const changeType = typeof req.body.changeType === "string" ? req.body.changeType : "";
     const policyId = typeof req.body.policyId === "string" ? req.body.policyId : "";
     const relatedPolicy = isValidObjectId(policyId)

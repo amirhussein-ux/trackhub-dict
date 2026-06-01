@@ -6,7 +6,7 @@ import { evaluateWorkflowRules } from "./workflowRules";
 import { logger } from "../lib/logger";
 import { TimelineService } from "../services/timelineService";
 
-const ACTIVITY_TIMESTAMP_FORMAT = () => new Date().toISOString().replace("T", " ").slice(0, 16);
+const ACTIVITY_TIMESTAMP_FORMAT = () => new Date().toISOString();
 
 type PolicyStatus = "Approved" | "Under Review" | "On Progress" | "On Hold" | "Published";
 
@@ -107,7 +107,9 @@ function getNotificationRecipients(event: WorkflowEvent, policy: { createdBy: st
     case "POLICY_ARCHIVED":
       return Array.from(new Set(policy.accessEmails ?? []));
     default:
-      return Array.from(new Set([...(policy.accessEmails ?? []), ...metadataRecipients]));
+      // Combine and deduplicate all recipients
+      const allRecipients = [...(policy.accessEmails ?? []), ...metadataRecipients];
+      return Array.from(new Set(allRecipients.map((email) => email.toLowerCase()))).filter((email) => email.length > 0);
   }
 }
 

@@ -34,7 +34,7 @@ async function checkForApprovalEscalations(): Promise<void> {
       policyId: policy.id,
       policyTitle: policy.title,
       changeType: `Action needed: '${policy.title}' has been pending for 14 days`,
-      timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+      timestamp: new Date().toISOString(),
       read: false,
       recipientEmail: "oicdirector@dict.gov.ph",
     });

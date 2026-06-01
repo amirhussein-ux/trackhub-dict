@@ -317,7 +317,7 @@ export default function PolicyTrackerPage() {
       title: editForm.title.trim(),
       division: editForm.division,
       archived: selectedPolicy.archived,
-      type: inferPolicyType(editForm.policyNumber.trim()),
+      type: selectedPolicy.type,
       referenceLink: editForm.referenceLink.trim() || undefined,
       lastUpdated: now,
       remarks: nextRemarks,

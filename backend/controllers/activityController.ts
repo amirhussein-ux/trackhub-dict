@@ -10,7 +10,7 @@ export const createActivity = async (req: Request, res: Response, next: NextFunc
       return;
     }
 
-    const timestamp = req.body.timestamp ?? new Date().toISOString().replace("T", " ").slice(0, 16);
+    const timestamp = req.body.timestamp ?? new Date().toISOString();
     const { user, ...activityData } = req.body as Record<string, unknown>;
     const activity = await ActivityLog.create({
       ...activityData,

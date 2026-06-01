@@ -118,6 +118,18 @@ export default function PolicyDetailPage() {
 
   const handlePolicyAction = async (actionId: string) => {
     try {
+      if (actionId === "grant-access") {
+        // Open a simple dialog to add a collaborator
+        const collaboratorEmail = window.prompt("Enter the email of the person to add as a collaborator:");
+        if (!collaboratorEmail || !collaboratorEmail.trim()) {
+          return;
+        }
+        await PolicyAutomationService.grantAccess(policy.id, collaboratorEmail.trim());
+        await refreshAllDataFromApi();
+        toast({ title: "Collaborator added", description: `${collaboratorEmail.trim()} now has access to this policy.` });
+        return;
+      }
+
       if (actionId === "review-ready") {
         if (!canSubmitChecklist) {
           toast({ title: "Incomplete checklist", description: "Complete all checklist items before sending for review.", variant: "destructive" });

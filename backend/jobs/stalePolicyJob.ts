@@ -42,7 +42,7 @@ async function checkForStalePolicies(): Promise<void> {
             policyId: policy.id,
             policyTitle: policy.title,
             changeType: `Reminder: '${policy.title}' is waiting for your review`,
-            timestamp: new Date().toISOString().replace("T", " ").slice(0, 16),
+            timestamp: new Date().toISOString(),
             read: false,
             recipientEmail: reviewer,
           })
