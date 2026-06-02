@@ -196,6 +196,14 @@ export default function PolicyDetailPage() {
         return;
       }
 
+      if (actionId === "publish") {
+        if (!window.confirm("This will publish the policy and notify the relevant teams. Continue?")) return;
+        await PolicyAutomationService.publishPolicy(policy.id);
+        await refreshAllDataFromApi();
+        toast({ title: "Policy published", description: "The policy is now marked as published." });
+        return;
+      }
+
       if (actionId === "archive") {
         if (!window.confirm("This will permanently close the policy. It cannot be edited after archiving.")) return;
         await PolicyAutomationService.archivePolicy(policy.id);

@@ -16,7 +16,7 @@
 4. [GitHub Actions Workflows](#github-actions-workflows)
 5. [Environment Configuration](#environment-configuration)
 6. [Deployment Strategy](#deployment-strategy)
-7. [Security & Secrets Management](#security--secrets-management)
+7. [Security & Secrets Management](#security--se'crets-management)
 8. [Monitoring & Alerting](#monitoring--alerting)
 9. [Rollback Procedures](#rollback-procedures)
 10. [Cost Optimization](#cost-optimization)

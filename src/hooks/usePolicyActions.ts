@@ -68,7 +68,7 @@ export function usePolicyActions(policy: Policy, currentUser: SessionUser): Poli
       id: "publish",
       label: "Upload & publish",
       variant: "primary",
-      endpoint: `/api/documents`,
+      endpoint: `/api/policies/${policy.id}/actions/publish`,
       method: "POST",
     });
   }

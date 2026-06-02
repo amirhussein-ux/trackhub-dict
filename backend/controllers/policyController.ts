@@ -4,7 +4,6 @@ import User from "../models/User";
 import { escapeRegex } from "../utils/escapeRegex";
 import {
   canAccessPolicy,
-  canApprovePolicy,
   canArchivePolicy,
   canEditPolicy,
   canGrantPolicyAccess,
@@ -506,8 +505,18 @@ export const publishPolicyAction = async (req: Request, res: Response, next: Nex
     }
 
     const policy = await Policy.findById(req.params.id);
-    if (!policy || !canApprovePolicy(currentUser)) {
+    if (!policy) {
       res.status(404).json({ message: "Policy not found." });
+      return;
+    }
+
+    if (!canPublishPolicy(currentUser)) {
+      res.status(403).json({ message: "You do not have permission to publish this policy." });
+      return;
+    }
+
+    if (policy.workflowState !== "Approved") {
+      res.status(400).json({ message: "Only approved policies can be published." });
       return;
     }
 
